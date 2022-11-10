@@ -39,7 +39,7 @@ struct DNSQuestionFormatOptions {
 };
 
 struct DNSQuestionRecordOptions {
-	char* questionBuffer;
+	char* DNSQuestionBuffer;
 	struct DNSQuestionFormatOptions formatOptions;
 };
 
@@ -56,7 +56,7 @@ void 			destroyLibnet(struct Libnet libnet);
 void 			parseArguments(int part, int argc, char* argv[]);
 char 			size_tToChar(size_t size);
 short 			parseOptions(int argc, char* argv[]);
-uint16_t 		formatDNSQuestion(char* questionBuffer, struct DNSQuestionFormatOptions options);
+uint16_t 		formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options);
 uint32_t 		makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
 struct Libnet 	makeLibnet();
 libnet_ptag_t 	makeIPHeader(struct Libnet libnet, struct IPv4HeaderOptions options);
@@ -89,13 +89,13 @@ int main(int argc, char* argv[]) {
 	uint16_t sourcePort = 53, destinationPort = 53;
 	libnet_ptag_t IPHeader, UDPHeader, DNSHeader;
 	struct DNSQuestionRecord DNSQuestionRecord;
-	char questionBuffer[PAYLOAD_BUFFER_SIZE];
+	char DNSQuestionBuffer[PAYLOAD_BUFFER_SIZE];
 	char* subdomain = "vunet";
 	char* domain = "vu";
 	char* root = "nl";
 
 	struct DNSQuestionFormatOptions DNSQuestionFormatOptions = { subdomain, domain, root };
-	struct DNSQuestionRecordOptions DNSQuestionRecordOptions = { questionBuffer, DNSQuestionFormatOptions };
+	struct DNSQuestionRecordOptions DNSQuestionRecordOptions = { DNSQuestionBuffer, DNSQuestionFormatOptions };
 	DNSQuestionRecord = makeDNSQuestionRecord(libnet, DNSQuestionRecordOptions);
 
 	struct DNSHeaderOptions DNSHeaderOptions = { DNSQuestionRecord.questionSize, 0x1000 };
@@ -148,8 +148,8 @@ uint32_t makeByteNumberedIP(struct Libnet libnet, char* name, int resolve) {
 	return byteOrderedIp;
 }
 
-uint16_t formatDNSQuestion(char* questionBuffer, struct DNSQuestionFormatOptions options) {
-	uint16_t payloadSize = snprintf(questionBuffer, sizeof(char) * PAYLOAD_BUFFER_SIZE, "%c%s%c%s%c%s%c%c%c%c%c",
+uint16_t formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options) {
+	uint16_t payloadSize = snprintf(DNSQuestionBuffer, sizeof(char) * PAYLOAD_BUFFER_SIZE, "%c%s%c%s%c%s%c%c%c%c%c",
 		size_tToChar(strlen(options.subdomain)),
 		options.subdomain,
 		size_tToChar(strlen(options.domain)),
@@ -166,9 +166,9 @@ uint16_t formatDNSQuestion(char* questionBuffer, struct DNSQuestionFormatOptions
 }
 
 struct DNSQuestionRecord makeDNSQuestionRecord(struct Libnet libnet, struct DNSQuestionRecordOptions questionRecordOptions ) {
-	uint16_t questionSize = formatDNSQuestion(questionRecordOptions.questionBuffer, questionRecordOptions.formatOptions);
+	uint16_t questionSize = formatDNSQuestion(questionRecordOptions.DNSQuestionBuffer, questionRecordOptions.formatOptions);
 	libnet_ptag_t libnet_ptag = libnet_build_data(
-		(uint8_t*)questionRecordOptions.questionBuffer,
+		(uint8_t*)questionRecordOptions.DNSQuestionBuffer,
 		questionSize,
 		libnet.library,
 		0
