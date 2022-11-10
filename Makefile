@@ -12,7 +12,7 @@ build: ${SOURCE_NAME}.c
 
 link: build
 	@echo "Linking..."
-	@gcc ${SOURCE_NAME}.o -o ${SOURCE_NAME}_out ${LIBRARY_FLAGS}
+	@gcc ${SOURCE_NAME}.o -o ${SOURCE_NAME} ${LIBRARY_FLAGS}
 
 clean: link
 	@echo "Cleaning temporary files..."
