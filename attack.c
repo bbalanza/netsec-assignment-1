@@ -81,9 +81,14 @@ struct DNSQnameRequestOptions {
 	char* qname;
 };
 
+struct DNSAnswerRecord {
+	uint16_t recordSize;
+	libnet_ptag_t ptag;		
+};
+
 void 						destroyLibnetContext(struct Libnet libnet);
 void 						parseArguments(int part, int argc, char* argv[]);
-char 						size_tToChar(size_t size);
+char 						uint32toOctate(uint32_t size);
 short 						parseOptions(int argc, char* argv[]);
 uint16_t 					formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options);
 uint32_t 					makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
@@ -95,8 +100,6 @@ struct DNSRequestHeaders	makeDNSRequestHeaders(struct DNSRequestHeadersOptions o
 struct DNSQnameRequest 		makeDNSQnameQuery(struct DNSQnameRequestOptions options);
 struct DNSQuestionRecord 	makeDNSQuestionRecord(struct Libnet libnet, struct DNSQuestionRecordOptions options);
 
-
-
 void partOne(int argc, char* argv[]) {
 
 }
@@ -105,7 +108,7 @@ uint32_t baitResolver(libnet_t* libnet, char* name, char* ip) {
 
 }
 
-char size_tToChar(size_t size) {
+char uint32toOctate(u_int32_t size) {
 	return (char)(size & 0xFF);
 }
 
@@ -211,11 +214,11 @@ uint32_t makeByteNumberedIP(struct Libnet libnet, char* name, int resolve) {
 
 uint16_t formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options) {
 	uint16_t payloadSize = snprintf(DNSQuestionBuffer, sizeof(char) * PAYLOAD_BUFFER_SIZE, "%c%s%c%s%c%s%c%c%c%c%c",
-		size_tToChar(strlen(options.subdomain)),
+		uint32toOctate(strlen(options.subdomain)),
 		options.subdomain,
-		size_tToChar(strlen(options.domain)),
+		uint32toOctate(strlen(options.domain)),
 		options.domain,
-		size_tToChar(strlen(options.root)),
+		uint32toOctate(strlen(options.root)),
 		options.root,
 		0x00,
 		0x00, // QType
