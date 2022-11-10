@@ -35,8 +35,8 @@ struct DNSOptions {
 
 struct PayloadOptions {
 	char* payloadBuffer;
-	char* subdomain; 
-	char* domain; 
+	char* subdomain;
+	char* domain;
 	char* root;
 };
 
@@ -45,15 +45,63 @@ struct DNSQuestionPacketOptions {
 	char* payloadBuffer;
 };
 
-short parseOptions(int argc, char* argv[]);
-struct Libnet makeLibnet();
-void destroyLibnet(struct Libnet libnet);
-void parseArguments(int part, int argc, char* argv[]);
-uint32_t makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
-libnet_ptag_t makeIPHeader(struct Libnet libnet, struct IPv4Options options);
-libnet_ptag_t makeUDPHeader(struct Libnet libnet, struct UDPOptions options);
-libnet_ptag_t makeDNSPacket(struct Libnet libnet, struct DNSOptions options);
-char size_tToChar(size_t size);
+void 			destroyLibnet(struct Libnet libnet);
+void 			parseArguments(int part, int argc, char* argv[]);
+char 			size_tToChar(size_t size);
+short 			parseOptions(int argc, char* argv[]);
+uint16_t 		makePayload(struct PayloadOptions options);
+uint32_t 		makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
+struct Libnet 	makeLibnet();
+libnet_ptag_t 	makeIPHeader(struct Libnet libnet, struct IPv4Options options);
+libnet_ptag_t 	makeUDPHeader(struct Libnet libnet, struct UDPOptions options);
+libnet_ptag_t 	makeDNSPacket(struct Libnet libnet, struct DNSOptions options);
+libnet_ptag_t 	makeDNSQuestionPacket(struct Libnet libnet, struct DNSQuestionPacketOptions DNSQuestionPacketOptions);
+
+void partOne(int argc, char* argv[]) {
+
+}
+
+uint32_t baitResolver(libnet_t* libnet, char* name, char* ip) {
+
+}
+
+char size_tToChar(size_t size) {
+	return (char)(size & 0xFF);
+}
+
+
+int main(int argc, char* argv[]) {
+
+	short part = parseOptions(argc, argv);
+	struct Libnet libnet = makeLibnet();
+
+	char* triboreResolverIP = "192.168.10.10"; /*Assignment makes use of hardcoded IP address for the nameserver*/
+	uint32_t destinationIP = 0, sourceIP = 0;
+	sourceIP = libnet_get_ipaddr4(libnet.library);
+	destinationIP = makeByteNumberedIP(libnet, triboreResolverIP, LIBNET_DONT_RESOLVE);
+	uint16_t sourcePort = 53, destinationPort = 53;
+	libnet_ptag_t IPHeader, UDPHeader, DNSPacket, DNSQuestionPacket;
+	char payloadBuffer[PAYLOAD_BUFFER_SIZE];
+	char* subdomain = "vunet";
+	char* domain = "vu";
+	char* root = "nl";
+
+	struct PayloadOptions PayloadOptions = { payloadBuffer, subdomain, domain, root };
+	uint16_t payloadSize = makePayload(PayloadOptions);
+	struct DNSQuestionPacketOptions DNSQuestionPacketOptions = { payloadSize, payloadBuffer };
+	struct DNSOptions DNSOptions = { payloadSize, payloadBuffer, 0x1000 };
+	struct UDPOptions UDPOptions = { payloadSize, sourcePort, destinationPort };
+	struct IPv4Options IPOptions = { payloadSize, sourceIP, destinationIP };
+
+	DNSQuestionPacket = makeDNSQuestionPacket(libnet, DNSQuestionPacketOptions);
+	DNSPacket = makeDNSPacket(libnet, DNSOptions);
+	UDPHeader = makeUDPHeader(libnet, UDPOptions);
+	IPHeader = makeIPHeader(libnet, IPOptions);
+
+	libnet_write(libnet.library);
+	destroyLibnet(libnet);
+	return 0;
+}
 
 libnet_ptag_t makeDNSPacket(struct Libnet libnet, struct DNSOptions options) {
 	uint16_t FLAGS = 0x0100;
@@ -83,20 +131,6 @@ libnet_ptag_t makeDNSPacket(struct Libnet libnet, struct DNSOptions options) {
 	return DNSPacket;
 }
 
-
-void partOne(int argc, char* argv[]) {
-
-}
-
-uint32_t makeBait(libnet_t* libnet, char* name, char* ip) {
-
-}
-
-char size_tToChar(size_t size) {
-	return (char)(size & 0xFF);
-}
-
-
 uint32_t makeByteNumberedIP(struct Libnet libnet, char* name, int resolve) {
 	uint32_t byteOrderedIp;
 	if ((byteOrderedIp = libnet_name2addr4(libnet.library, name, resolve)) == -1) {
@@ -106,9 +140,7 @@ uint32_t makeByteNumberedIP(struct Libnet libnet, char* name, int resolve) {
 	return byteOrderedIp;
 }
 
-
-
-uint16_t makePayload(struct PayloadOptions options){
+uint16_t makePayload(struct PayloadOptions options) {
 	uint16_t payloadSize = snprintf(options.payloadBuffer, sizeof(char) * PAYLOAD_BUFFER_SIZE, "%c%s%c%s%c%s%c%c%c%c%c",
 		size_tToChar(strlen(options.subdomain)),
 		options.subdomain,
@@ -133,39 +165,6 @@ libnet_ptag_t makeDNSQuestionPacket(struct Libnet libnet, struct DNSQuestionPack
 		0
 	);
 	return questionPacket;
-}
-
-int main(int argc, char* argv[]) {
-
-	short part = parseOptions(argc, argv);
-	struct Libnet libnet = makeLibnet();
-
-	char* triboreResolverIP = "192.168.10.10"; /*Assignment makes use of hardcoded IP address for the nameserver*/
-	uint32_t destinationIP = 0, sourceIP = 0;
-	sourceIP = libnet_get_ipaddr4(libnet.library);
-	destinationIP = makeByteNumberedIP(libnet, triboreResolverIP, LIBNET_DONT_RESOLVE);
-	uint16_t sourcePort = 53, destinationPort = 53;
-	libnet_ptag_t IPHeader, UDPHeader, DNSPacket, DNSQuestionPacket;
-	char payloadBuffer[PAYLOAD_BUFFER_SIZE];
-	char* subdomain = "vunet";
-	char* domain = "vu";
-	char* root = "nl";
-
-	struct PayloadOptions PayloadOptions = {payloadBuffer, subdomain, domain, root};
-	uint16_t payloadSize = makePayload(PayloadOptions);
-	struct DNSQuestionPacketOptions DNSQuestionPacketOptions = {payloadSize, payloadBuffer};
-	struct DNSOptions DNSOptions = { payloadSize, payloadBuffer, 0x1000 };
-	struct UDPOptions UDPOptions = { payloadSize, sourcePort, destinationPort };
-	struct IPv4Options IPOptions = { payloadSize, sourceIP, destinationIP };
-
-	DNSQuestionPacket = makeDNSQuestionPacket(libnet, DNSQuestionPacketOptions);
-	DNSPacket = makeDNSPacket(libnet, DNSOptions);
-	UDPHeader = makeUDPHeader(libnet, UDPOptions);
-	IPHeader = makeIPHeader(libnet, IPOptions);
-
-	libnet_write(libnet.library);
-	destroyLibnet(libnet);
-	return 0;
 }
 
 libnet_ptag_t makeUDPHeader(struct Libnet libnet, struct UDPOptions options) {
