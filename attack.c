@@ -15,47 +15,55 @@ struct Libnet {
 	char* errorBuffer;
 };
 
-struct IPv4Options {
+struct IPv4HeaderOptions {
 	uint16_t payloadSize;
 	uint32_t sourceIP;
 	uint32_t destinationIP;
 };
 
-struct UDPOptions {
+struct UDPHeaderOptions {
 	uint16_t payloadSize;
 	uint16_t sourcePort;
 	uint16_t destinationPort;
 };
 
-struct DNSOptions {
+struct DNSHeaderOptions {
 	u_int16_t payloadSize;
-	char* payloadBuffer;
 	uint16_t queryID;
 };
 
-struct PayloadOptions {
-	char* payloadBuffer;
+struct DNSQuestionFormatOptions {
 	char* subdomain;
 	char* domain;
 	char* root;
 };
 
-struct DNSQuestionPacketOptions {
-	uint16_t payloadSize;
-	char* payloadBuffer;
+struct DNSQuestionRecordOptions {
+	char* questionBuffer;
+	struct DNSQuestionFormatOptions formatOptions;
+};
+
+struct DNSQuestionRecord {
+	libnet_ptag_t libnet_ptag;
+	uint16_t questionSize;	
+};
+
+struct AnswerRecordOptions {
+
 };
 
 void 			destroyLibnet(struct Libnet libnet);
 void 			parseArguments(int part, int argc, char* argv[]);
 char 			size_tToChar(size_t size);
 short 			parseOptions(int argc, char* argv[]);
-uint16_t 		makePayload(struct PayloadOptions options);
+uint16_t 		formatDNSQuestion(char* questionBuffer, struct DNSQuestionFormatOptions options);
 uint32_t 		makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
 struct Libnet 	makeLibnet();
-libnet_ptag_t 	makeIPHeader(struct Libnet libnet, struct IPv4Options options);
-libnet_ptag_t 	makeUDPHeader(struct Libnet libnet, struct UDPOptions options);
-libnet_ptag_t 	makeDNSPacket(struct Libnet libnet, struct DNSOptions options);
-libnet_ptag_t 	makeDNSQuestionPacket(struct Libnet libnet, struct DNSQuestionPacketOptions DNSQuestionPacketOptions);
+libnet_ptag_t 	makeIPHeader(struct Libnet libnet, struct IPv4HeaderOptions options);
+libnet_ptag_t 	makeUDPHeader(struct Libnet libnet, struct UDPHeaderOptions options);
+libnet_ptag_t 	makeDNSHeader(struct Libnet libnet, struct DNSHeaderOptions options);
+libnet_ptag_t 	makeAnswerRecord(struct Libnet libnet, struct AnswerRecordOptions options);
+struct DNSQuestionRecord makeDNSQuestionRecord(struct Libnet libnet, struct DNSQuestionRecordOptions options);
 
 void partOne(int argc, char* argv[]) {
 
@@ -75,27 +83,27 @@ int main(int argc, char* argv[]) {
 	short part = parseOptions(argc, argv);
 	struct Libnet libnet = makeLibnet();
 
-	char* triboreResolverIP = "192.168.10.10"; /*Assignment makes use of hardcoded IP address for the nameserver*/
-	uint32_t destinationIP = 0, sourceIP = 0;
-	sourceIP = libnet_get_ipaddr4(libnet.library);
-	destinationIP = makeByteNumberedIP(libnet, triboreResolverIP, LIBNET_DONT_RESOLVE);
+	char* victimsResolverIP = "192.168.10.10"; /*Assignment makes use of hardcoded IP address for the resolver*/
+	uint32_t sourceIP = libnet_get_ipaddr4(libnet.library);
+	uint32_t destinationIP = makeByteNumberedIP(libnet, victimsResolverIP, LIBNET_DONT_RESOLVE);
 	uint16_t sourcePort = 53, destinationPort = 53;
-	libnet_ptag_t IPHeader, UDPHeader, DNSPacket, DNSQuestionPacket;
-	char payloadBuffer[PAYLOAD_BUFFER_SIZE];
+	libnet_ptag_t IPHeader, UDPHeader, DNSHeader;
+	struct DNSQuestionRecord DNSQuestionRecord;
+	char questionBuffer[PAYLOAD_BUFFER_SIZE];
 	char* subdomain = "vunet";
 	char* domain = "vu";
 	char* root = "nl";
 
-	struct PayloadOptions PayloadOptions = { payloadBuffer, subdomain, domain, root };
-	uint16_t payloadSize = makePayload(PayloadOptions);
-	struct DNSQuestionPacketOptions DNSQuestionPacketOptions = { payloadSize, payloadBuffer };
-	struct DNSOptions DNSOptions = { payloadSize, payloadBuffer, 0x1000 };
-	struct UDPOptions UDPOptions = { payloadSize, sourcePort, destinationPort };
-	struct IPv4Options IPOptions = { payloadSize, sourceIP, destinationIP };
+	struct DNSQuestionFormatOptions DNSQuestionFormatOptions = { subdomain, domain, root };
+	struct DNSQuestionRecordOptions DNSQuestionRecordOptions = { questionBuffer, DNSQuestionFormatOptions };
+	DNSQuestionRecord = makeDNSQuestionRecord(libnet, DNSQuestionRecordOptions);
 
-	DNSQuestionPacket = makeDNSQuestionPacket(libnet, DNSQuestionPacketOptions);
-	DNSPacket = makeDNSPacket(libnet, DNSOptions);
-	UDPHeader = makeUDPHeader(libnet, UDPOptions);
+	struct DNSHeaderOptions DNSHeaderOptions = { DNSQuestionRecord.questionSize, 0x1000 };
+	struct UDPHeaderOptions UDPHeaderOptions = { DNSQuestionRecord.questionSize, sourcePort, destinationPort };
+	struct IPv4HeaderOptions IPOptions = { DNSQuestionRecord.questionSize, sourceIP, destinationIP };
+
+	DNSHeader = makeDNSHeader(libnet, DNSHeaderOptions);
+	UDPHeader = makeUDPHeader(libnet, UDPHeaderOptions);
 	IPHeader = makeIPHeader(libnet, IPOptions);
 
 	libnet_write(libnet.library);
@@ -103,7 +111,7 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
-libnet_ptag_t makeDNSPacket(struct Libnet libnet, struct DNSOptions options) {
+libnet_ptag_t makeDNSHeader(struct Libnet libnet, struct DNSHeaderOptions options) {
 	uint16_t FLAGS = 0x0100;
 	u_int16_t NUMBER_QUESTIONS = 1; /* Might change in later parts.*/
 	u_int16_t NUMBER_ANSWER_RR = 0;
@@ -111,7 +119,7 @@ libnet_ptag_t makeDNSPacket(struct Libnet libnet, struct DNSOptions options) {
 	u_int16_t NUMBER_ADDITIONAL_RR = 0;
 	libnet_ptag_t PTAG = 0;
 
-	libnet_ptag_t DNSPacket = libnet_build_dnsv4(
+	libnet_ptag_t DNSHeader = libnet_build_dnsv4(
 		LIBNET_UDP_DNSV4_H,
 		options.queryID,
 		FLAGS,
@@ -124,11 +132,11 @@ libnet_ptag_t makeDNSPacket(struct Libnet libnet, struct DNSOptions options) {
 		libnet.library,
 		PTAG
 	);
-	if (DNSPacket == -1) {
+	if (DNSHeader == -1) {
 		fprintf(stderr, "Error: Could not create DNS packet. \nLibnet Error: %s", libnet_geterror(libnet.library));
 		exit(EXIT_FAILURE);
 	}
-	return DNSPacket;
+	return DNSHeader;
 }
 
 uint32_t makeByteNumberedIP(struct Libnet libnet, char* name, int resolve) {
@@ -140,8 +148,8 @@ uint32_t makeByteNumberedIP(struct Libnet libnet, char* name, int resolve) {
 	return byteOrderedIp;
 }
 
-uint16_t makePayload(struct PayloadOptions options) {
-	uint16_t payloadSize = snprintf(options.payloadBuffer, sizeof(char) * PAYLOAD_BUFFER_SIZE, "%c%s%c%s%c%s%c%c%c%c%c",
+uint16_t formatDNSQuestion(char* questionBuffer, struct DNSQuestionFormatOptions options) {
+	uint16_t payloadSize = snprintf(questionBuffer, sizeof(char) * PAYLOAD_BUFFER_SIZE, "%c%s%c%s%c%s%c%c%c%c%c",
 		size_tToChar(strlen(options.subdomain)),
 		options.subdomain,
 		size_tToChar(strlen(options.domain)),
@@ -157,17 +165,18 @@ uint16_t makePayload(struct PayloadOptions options) {
 	return payloadSize;
 }
 
-libnet_ptag_t makeDNSQuestionPacket(struct Libnet libnet, struct DNSQuestionPacketOptions DNSQuestionPacketOptions) {
-	libnet_ptag_t questionPacket = libnet_build_data(
-		(uint8_t*)DNSQuestionPacketOptions.payloadBuffer,
-		DNSQuestionPacketOptions.payloadSize,
+struct DNSQuestionRecord makeDNSQuestionRecord(struct Libnet libnet, struct DNSQuestionRecordOptions questionRecordOptions ) {
+	uint16_t questionSize = formatDNSQuestion(questionRecordOptions.questionBuffer, questionRecordOptions.formatOptions);
+	libnet_ptag_t libnet_ptag = libnet_build_data(
+		(uint8_t*)questionRecordOptions.questionBuffer,
+		questionSize,
 		libnet.library,
 		0
 	);
-	return questionPacket;
+	return (struct DNSQuestionRecord){libnet_ptag, questionSize};
 }
 
-libnet_ptag_t makeUDPHeader(struct Libnet libnet, struct UDPOptions options) {
+libnet_ptag_t makeUDPHeader(struct Libnet libnet, struct UDPHeaderOptions options) {
 	uint16_t CHECKSUM = 0;
 	uint16_t PTAG = 0;
 
@@ -187,7 +196,7 @@ libnet_ptag_t makeUDPHeader(struct Libnet libnet, struct UDPOptions options) {
 	}
 }
 
-libnet_ptag_t makeIPHeader(struct Libnet libnet, struct IPv4Options options) {
+libnet_ptag_t makeIPHeader(struct Libnet libnet, struct IPv4HeaderOptions options) {
 	uint8_t TYPE_OF_SERVICE = 0;
 	uint16_t ID = 0;
 	uint16_t FRAGMENTATION = 0;
