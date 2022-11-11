@@ -6,7 +6,7 @@
 #include <libnet.h>
 
 #define DNS_NAME_LENGTH 64
-#define PAYLOAD_BUFFER_SIZE 1024
+#define RECORD_BUFFER_SIZE 1024
 #define NULL_PAYLOAD NULL
 #define NULL_PAYLOAD_SIZE 0
 
@@ -84,7 +84,9 @@ struct DNSAnswerRecord {
 	libnet_ptag_t ptag;
 };
 
-struct DNSAnswerRecordOptions {
+struct DNSAnswerRecordFormatOptions {
+	struct Libnet libnet;
+	char* ip;
 	char* buffer;
 	char* qname;
 };
@@ -93,9 +95,10 @@ void 						destroyLibnetContext(struct Libnet libnet);
 void 						parseArguments(int part, int argc, char* argv[]);
 char 						uint32toOctateChar(uint32_t uint32);
 char 						uint8toOctateChar(uint8_t uint8);
-uint16_t 						makeDomain(char* buffer, char* domainString);
+uint16_t 					makeDomain(char* buffer, char* domainString);
 short 						parseOptions(int argc, char* argv[]);
 uint16_t 					formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options);
+uint16_t 					formatDNSAnswerRecord(struct DNSAnswerRecordFormatOptions options);
 uint16_t					makeDomain(char* buffer, char* domainString);
 uint32_t 					makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
 struct Libnet 				makeLibnet();
@@ -105,18 +108,17 @@ libnet_ptag_t 				makeDNSHeader(struct Libnet libnet, struct DNSHeaderOptions op
 struct DNSRequestHeaders	makeDNSRequestHeaders(struct DNSRequestHeadersOptions options);
 struct DNSQnameRequest 		makeDNSQnameQuery(struct DNSQnameRequestOptions options);
 struct DNSQuestionRecord 	makeDNSQuestionRecord(struct DNSQuestionRecordOptions options);
-struct DNSAnswerRecord 		makeDNSAnswerRecord(struct DNSAnswerRecordOptions options);
 
 
 uint16_t makeDomain(char* buffer, char* domainString) {
 	char* iter = domainString, * labelStart = domainString;
 	char* bufferIter = buffer;
-	uint32_t labelLength, domainLength = 0;
+	uint32_t labelLength = 0, domainLength = 0;
 	while (1) {
 		if (*iter == '.' || *iter == '\0') {
 			char labelLengthAsChar = uint32toOctateChar(labelLength);
-			memcpy(bufferIter, &labelLengthAsChar, sizeof(labelLengthAsChar));
-			bufferIter += sizeof(labelLengthAsChar);
+			memcpy(bufferIter, &labelLengthAsChar, 1);
+			bufferIter += 1;
 
 			memcpy(bufferIter, labelStart, labelLength);
 			bufferIter += labelLength;
@@ -137,10 +139,24 @@ uint16_t makeDomain(char* buffer, char* domainString) {
 		iter += 1;
 	}
 	return domainLength;
-}
+};
 
-struct DNSAnswerRecord makeDNSAnswerRecord(struct DNSAnswerRecordOptions options) {
+uint16_t formatDNSAnswerRecord(struct DNSAnswerRecordFormatOptions options) {
+	char Type[2] = {0x00, 0x01};
+	char Class[2] = {0x00, 0x01};
+	char TTL[32] = {0x00, 0x00, 0x1C, 0x20};
+	char RDLENGTH[2] = {0x00, 0x04};
+	uint16_t address = libnet_name2addr4(options.libnet.context, options.ip, LIBNET_DONT_RESOLVE);
+	uint16_t recordLength = 0;
+	recordLength = makeDomain(options.buffer, options.qname);
+	memcpy(options.buffer, &Type, sizeof Type);
+	recordLength += sizeof Type;
+	memcpy(options.buffer, &Class, sizeof Class);
+	recordLength += sizeof Class;
+	memcpy(options.buffer, &address, sizeof address);
+	recordLength += sizeof address;
 
+	return recordLength;
 }
 
 void partOne(int argc, char* argv[]) {
@@ -270,7 +286,7 @@ uint16_t formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOpti
 }
 
 struct DNSQuestionRecord makeDNSQuestionRecord(struct DNSQuestionRecordOptions options) {
-	char questionBuffer[PAYLOAD_BUFFER_SIZE];
+	char questionBuffer[RECORD_BUFFER_SIZE] = {'\0'};
 	uint16_t questionSize = formatDNSQuestion(questionBuffer, options.formatOptions);
 	libnet_ptag_t libnet_ptag = libnet_build_data(
 		(uint8_t*)questionBuffer,
