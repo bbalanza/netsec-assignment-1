@@ -275,11 +275,11 @@ struct DNSQuestionRecord makeDNSQuestionRecord(struct DNSQuestionRecordOptions o
 	libnet_ptag_t libnet_ptag = libnet_build_data(
 		(uint8_t*)questionBuffer,
 		questionSize,
-		libnet.context,
+		options.libnet.context,
 		0
 	);
 	if (libnet_ptag == -1) {
-		fprintf(stderr, "Error could not create DNS question record..\n Libnet Error: %s", libnet_geterror(libnet.context));
+		fprintf(stderr, "Error could not create DNS question record..\n Libnet Error: %s", libnet_geterror(options.libnet.context));
 		exit(EXIT_FAILURE);
 	}
 	return (struct DNSQuestionRecord) { libnet_ptag, questionSize };
