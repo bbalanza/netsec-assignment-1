@@ -88,15 +88,28 @@ struct DNSAnswerRecord {
 	libnet_ptag_t ptag;
 };
 
-struct DNSAnswerRecordFormatOptions {
+struct DNSAnswerRecordOptions {
 	struct Libnet libnet;
-	uchar_t* buffer;
-	char* ip;
-	char* qname;
+	libnet_ptag_t ptag;
+	char * qname;
+	uint16_t type;
+	uint16_t class;
+	uint32_t ttl;
+	uint16_t rdlength;
+	char * rdata;	
 };
+
+struct DNSAnswerRecordFormatOptions {
+	uchar_t* buffer;
+	struct DNSAnswerRecordOptions answer;
+};
+
+
 
 void 						destroyLibnetContext(struct Libnet libnet);
 void 						parseArguments(int part, int argc, char* argv[]);
+void 						uint16ToChars(uchar_t* buffer, uint16_t uint);
+void 						uint32ToChars(uchar_t* buffer, uint32_t uint32);
 char 						uint32toOctateChar(uint32_t uint32);
 char 						uint8toOctateChar(uint8_t uint8);
 uint16_t 					makeDomain(char* buffer, char* domainString);
@@ -104,7 +117,9 @@ short 						parseOptions(int argc, char* argv[]);
 uint16_t 					formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options);
 uint16_t 					formatDNSAnswer(struct DNSAnswerRecordFormatOptions options);
 uint16_t					makeDomain(char* buffer, char* domainString);
+uint16_t 					uint16tono16(uint16_t uint);
 uint32_t 					makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
+uint32_t 					uint32tono32(uint32_t uint32);
 struct Libnet 				makeLibnet();
 libnet_ptag_t 				makeIPHeader(struct IPv4HeaderOptions options);
 libnet_ptag_t 				makeUDPHeader(struct UDPHeaderOptions options);
@@ -112,6 +127,7 @@ libnet_ptag_t 				makeDNSHeader(struct DNSHeaderOptions options);
 struct DNSRequestHeaders	makeDNSRequestHeaders(struct DNSRequestHeadersOptions options);
 struct DNSQnameRequest 		makeDNSQnameQuery(struct DNSQnameRequestOptions options);
 struct DNSQuestionRecord 	makeDNSQuestionRecord(struct DNSQuestionRecordOptions options);
+struct DNSAnswerRecord 		makeDNSAnswerRecord(struct DNSAnswerRecordOptions options);
 
 void partOne(int argc, char* argv[]) {
 
@@ -139,79 +155,37 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
-uint16_t makeDomain(char* buffer, char* domainString) {
-	char* iter = domainString, * labelStart = domainString;
-	char* bufferIter = buffer;
-	uint32_t labelLength = 0, domainLength = 0;
-	while (1) {
-		if (*iter == '.' || *iter == '\0') {
-			char labelLengthAsChar = uint32toOctateChar(labelLength);
-			memcpy(bufferIter, &labelLengthAsChar, 1);
-			bufferIter += 1;
-
-			memcpy(bufferIter, labelStart, labelLength);
-			bufferIter += labelLength;
-			labelStart = iter + sizeof((char)'.');
-
-			domainLength += labelLength + sizeof labelLengthAsChar;
-			labelLength = 0;
-			if (*iter == '\0') {
-				char nullChar = 0x00;
-				memcpy(bufferIter, &nullChar, sizeof((char)'\0'));
-				domainLength += sizeof((char)'\0');
-				break;
-			}
-		}
-		else {
-			labelLength += 1;
-		}
-		iter += 1;
+struct DNSAnswerRecord makeDNSAnswerRecord(struct DNSAnswerRecordOptions options) {
+	
+	struct DNSAnswerRecord record;
+	char answerBuffer[RECORD_BUFFER_SIZE] = { '\0' };
+	struct DNSAnswerRecordFormatOptions answerFormatOptions = {answerBuffer, options};
+	record.recordSize = formatDNSAnswer(answerFormatOptions);
+	record.ptag = libnet_build_data(
+		(uint8_t*)answerBuffer,
+		record.recordSize,
+		options.libnet.context,
+		options.ptag
+	);
+	if(record.ptag == -1){
+		fprintf(stderr, "Error: Could not create Answer Record.\n Libnet error: %s", libnet_geterror(options.libnet.context));
+		exit(EXIT_FAILURE);
 	}
-	return domainLength;
+	return record;
+
 };
-
-uint16_t uint16tono16(uint16_t uint) {
-	uint16_t networkOrderedUint32 = 0;
-	uint8_t* networkOrderedIter = (uint8_t*)&networkOrderedUint32;
-	uint8_t* uintIter = (uint8_t*)&uint;
-	for (int i = sizeof(uint16_t) - 1, j = 0; i >= 0; i--) {
-		networkOrderedIter[j] = uintIter[i];
-		j++;
-	}
-	return networkOrderedUint32;
-};
-
-void uint16ToChars(uchar_t* buffer, uint16_t uint) {
-	uchar_t bytes = sizeof(uint16_t);
-	memcpy(buffer, (uchar_t*)&uint, bytes);
-}
-
-uint32_t uint32tono32(uint32_t uint32) {
-	uint32_t networkOrderedUint32 = 0;
-	uint8_t* networkOrderedIter = (uint8_t*)&networkOrderedUint32;
-	uint8_t* uint32Iter = (uint8_t*)&uint32;
-	for (int i = sizeof(uint32_t) - 1, j = 0; i >= 0; i--) {
-		networkOrderedIter[j] = uint32Iter[i];
-		j++;
-	}
-	return networkOrderedUint32;
-};
-
-void uint32ToChars(uchar_t* buffer, uint32_t uint32) {
-	uchar_t bytes = sizeof(uint32_t);
-	memcpy(buffer, (uchar_t*)&uint32, bytes);
-}
 
 uint16_t formatDNSAnswer(struct DNSAnswerRecordFormatOptions options) {
 	uint16_t recordLength = 0;
-	char Type[sizeof(uint16_t)] = { 0x00, 0x01 };
-	char Class[sizeof(uint16_t)] = { 0x00, 0x01 };
-	char TTL[sizeof(uint32_t)] = { '\0' }; uint32ToChars(TTL,uint32tono32(7200));
-	char RDLENGTH[sizeof(uint16_t)] = {'\0'}; uint16ToChars(RDLENGTH,uint16tono16(4));
-	char addressBuffer[sizeof(uint32_t)] = { '\0' };
-	uint32_t uint32Address = libnet_name2addr4(options.libnet.context, options.ip, LIBNET_DONT_RESOLVE);
-	uint32ToChars(addressBuffer, uint32Address);
-	recordLength = makeDomain(options.buffer, options.qname);
+	char Type[sizeof(uint16_t)] = {'\0'}; uint16ToChars(Type,uint16tono16(options.answer.type));
+	char Class[sizeof(uint16_t)] = {'\0'}; uint16ToChars(Class,uint16tono16(options.answer.class)); 
+	char TTL[sizeof(uint32_t)] = { '\0' }; uint32ToChars(TTL,uint32tono32(options.answer.ttl));
+	char RDLENGTH[sizeof(uint16_t)] = {'\0'}; uint16ToChars(RDLENGTH,uint16tono16(options.answer.rdlength));
+	char rdataBuffer[sizeof(uint32_t)] = { '\0' };
+	uint32_t noRdata = libnet_name2addr4(options.answer.libnet.context, options.answer.rdata, LIBNET_DONT_RESOLVE);
+	uint32ToChars(rdataBuffer, noRdata);
+
+	recordLength = makeDomain(options.buffer, options.answer.qname);
 	memcpy(options.buffer + recordLength, &Type, sizeof Type);
 	recordLength += sizeof Type;
 	memcpy(options.buffer + recordLength, &Class, sizeof Class);
@@ -220,9 +194,9 @@ uint16_t formatDNSAnswer(struct DNSAnswerRecordFormatOptions options) {
 	recordLength += sizeof TTL;
 	memcpy(options.buffer + recordLength, &RDLENGTH, sizeof RDLENGTH);
 	recordLength += sizeof RDLENGTH;
-	memcpy(options.buffer + recordLength, addressBuffer, sizeof addressBuffer);
-	recordLength += sizeof addressBuffer;
-
+	memcpy(options.buffer + recordLength, rdataBuffer, sizeof rdataBuffer);
+	recordLength += sizeof rdataBuffer;
+	
 	for (int i = 0; i < recordLength; i++) {
 		printf("0x%02X ", options.buffer[i]);
 	}
@@ -333,9 +307,6 @@ uint16_t formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOpti
 
 struct DNSQuestionRecord makeDNSQuestionRecord(struct DNSQuestionRecordOptions options) {
 	char questionBuffer[RECORD_BUFFER_SIZE] = { '\0' };
-	char answerBuffer[RECORD_BUFFER_SIZE] = { '\0' };
-	struct DNSAnswerRecordFormatOptions answerFormatOptions = { options.libnet, answerBuffer, "192.168.10.20", options.formatOptions.qname };
-	uint16_t answerLength = formatDNSAnswer(answerFormatOptions);
 	uint16_t questionSize = formatDNSQuestion(questionBuffer, options.formatOptions);
 	libnet_ptag_t libnet_ptag = libnet_build_data(
 		(uint8_t*)questionBuffer,
@@ -471,3 +442,67 @@ short parseOptions(int argc, char* argv[]) {
 	}
 	return part;
 }
+
+uint16_t makeDomain(char* buffer, char* domainString) {
+	char* iter = domainString, * labelStart = domainString;
+	char* bufferIter = buffer;
+	uint32_t labelLength = 0, domainLength = 0;
+	while (1) {
+		if (*iter == '.' || *iter == '\0') {
+			char labelLengthAsChar = uint32toOctateChar(labelLength);
+			memcpy(bufferIter, &labelLengthAsChar, 1);
+			bufferIter += 1;
+
+			memcpy(bufferIter, labelStart, labelLength);
+			bufferIter += labelLength;
+			labelStart = iter + sizeof((char)'.');
+
+			domainLength += labelLength + sizeof labelLengthAsChar;
+			labelLength = 0;
+			if (*iter == '\0') {
+				char nullChar = 0x00;
+				memcpy(bufferIter, &nullChar, sizeof((char)'\0'));
+				domainLength += sizeof((char)'\0');
+				break;
+			}
+		}
+		else {
+			labelLength += 1;
+		}
+		iter += 1;
+	}
+	return domainLength;
+};
+
+uint16_t uint16tono16(uint16_t uint) {
+	uint16_t networkOrderedUint32 = 0;
+	uint8_t* networkOrderedIter = (uint8_t*)&networkOrderedUint32;
+	uint8_t* uintIter = (uint8_t*)&uint;
+	for (int i = sizeof(uint16_t) - 1, j = 0; i >= 0; i--) {
+		networkOrderedIter[j] = uintIter[i];
+		j++;
+	}
+	return networkOrderedUint32;
+};
+
+void uint16ToChars(uchar_t* buffer, uint16_t uint) {
+	uchar_t bytes = sizeof(uint16_t);
+	memcpy(buffer, (uchar_t*)&uint, bytes);
+}
+
+uint32_t uint32tono32(uint32_t uint32) {
+	uint32_t networkOrderedUint32 = 0;
+	uint8_t* networkOrderedIter = (uint8_t*)&networkOrderedUint32;
+	uint8_t* uint32Iter = (uint8_t*)&uint32;
+	for (int i = sizeof(uint32_t) - 1, j = 0; i >= 0; i--) {
+		networkOrderedIter[j] = uint32Iter[i];
+		j++;
+	}
+	return networkOrderedUint32;
+};
+
+void uint32ToChars(uchar_t* buffer, uint32_t uint32) {
+	uchar_t bytes = sizeof(uint32_t);
+	memcpy(buffer, (uchar_t*)&uint32, bytes);
+}
+
