@@ -9,6 +9,7 @@
 #define RECORD_BUFFER_SIZE 1024
 #define NULL_PAYLOAD NULL
 #define NULL_PAYLOAD_SIZE 0
+typedef unsigned char uchar_t;
 
 struct Libnet {
 	libnet_t* context;
@@ -17,21 +18,21 @@ struct Libnet {
 
 struct IPv4HeaderOptions {
 	struct Libnet libnet;
-	uint16_t payloadSize;
+	uint16_t resourceLength;
 	uint32_t sourceIP;
 	uint32_t destinationIP;
 };
 
 struct UDPHeaderOptions {
 	struct Libnet libnet;
-	uint16_t payloadSize;
+	uint16_t resourceLength;
 	uint16_t sourcePort;
 	uint16_t destinationPort;
 };
 
 struct DNSHeaderOptions {
 	struct Libnet libnet;
-	u_int16_t payloadSize;
+	u_int16_t resourceLength;
 	uint16_t queryID;
 };
 
@@ -89,8 +90,8 @@ struct DNSAnswerRecord {
 
 struct DNSAnswerRecordFormatOptions {
 	struct Libnet libnet;
+	uchar_t* buffer;
 	char* ip;
-	char* buffer;
 	char* qname;
 };
 
@@ -101,17 +102,42 @@ char 						uint8toOctateChar(uint8_t uint8);
 uint16_t 					makeDomain(char* buffer, char* domainString);
 short 						parseOptions(int argc, char* argv[]);
 uint16_t 					formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options);
-uint16_t 					formatDNSAnswerRecord(struct DNSAnswerRecordFormatOptions options);
+uint16_t 					formatDNSAnswer(struct DNSAnswerRecordFormatOptions options);
 uint16_t					makeDomain(char* buffer, char* domainString);
 uint32_t 					makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
 struct Libnet 				makeLibnet();
-libnet_ptag_t 				makeIPHeader( struct IPv4HeaderOptions options);
+libnet_ptag_t 				makeIPHeader(struct IPv4HeaderOptions options);
 libnet_ptag_t 				makeUDPHeader(struct UDPHeaderOptions options);
 libnet_ptag_t 				makeDNSHeader(struct DNSHeaderOptions options);
 struct DNSRequestHeaders	makeDNSRequestHeaders(struct DNSRequestHeadersOptions options);
 struct DNSQnameRequest 		makeDNSQnameQuery(struct DNSQnameRequestOptions options);
 struct DNSQuestionRecord 	makeDNSQuestionRecord(struct DNSQuestionRecordOptions options);
 
+void partOne(int argc, char* argv[]) {
+
+}
+
+void baitResolver(char* sourceIP, char* destinationIP, char* qname) {
+	struct DNSQnameRequestOptions DNSQnameRequestOptions = { sourceIP, destinationIP, qname };
+	struct DNSQnameRequest QNameQuery = makeDNSQnameQuery(DNSQnameRequestOptions);
+	libnet_write(QNameQuery.base.libnet.context);
+	destroyLibnetContext(QNameQuery.base.libnet);
+}
+
+char uint8toOctateChar(uint8_t uint8) {
+	return (char)(uint8 & 0xFF);
+}
+char uint32toOctateChar(uint32_t uint32) {
+	return (char)(uint32 & 0xFF);
+}
+
+
+int main(int argc, char* argv[]) {
+
+	short part = parseOptions(argc, argv);
+	baitResolver(NULL, "192.168.10.10", NULL);
+	return 0;
+}
 
 uint16_t makeDomain(char* buffer, char* domainString) {
 	char* iter = domainString, * labelStart = domainString;
@@ -144,48 +170,65 @@ uint16_t makeDomain(char* buffer, char* domainString) {
 	return domainLength;
 };
 
-uint16_t formatDNSAnswerRecord(struct DNSAnswerRecordFormatOptions options) {
-	char Type[2] = {0x00, 0x01};
-	char Class[2] = {0x00, 0x01};
-	char TTL[32] = {0x00, 0x00, 0x1C, 0x20};
-	char RDLENGTH[2] = {0x00, 0x04};
-	uint16_t address = libnet_name2addr4(options.libnet.context, options.ip, LIBNET_DONT_RESOLVE);
+uint16_t uint16tono16(uint16_t uint) {
+	uint16_t networkOrderedUint32 = 0;
+	uint8_t* networkOrderedIter = (uint8_t*)&networkOrderedUint32;
+	uint8_t* uintIter = (uint8_t*)&uint;
+	for (int i = sizeof(uint16_t) - 1, j = 0; i >= 0; i--) {
+		networkOrderedIter[j] = uintIter[i];
+		j++;
+	}
+	return networkOrderedUint32;
+};
+
+void uint16ToChars(uchar_t* buffer, uint16_t uint) {
+	uchar_t bytes = sizeof(uint16_t);
+	memcpy(buffer, (uchar_t*)&uint, bytes);
+}
+
+uint32_t uint32tono32(uint32_t uint32) {
+	uint32_t networkOrderedUint32 = 0;
+	uint8_t* networkOrderedIter = (uint8_t*)&networkOrderedUint32;
+	uint8_t* uint32Iter = (uint8_t*)&uint32;
+	for (int i = sizeof(uint32_t) - 1, j = 0; i >= 0; i--) {
+		networkOrderedIter[j] = uint32Iter[i];
+		j++;
+	}
+	return networkOrderedUint32;
+};
+
+void uint32ToChars(uchar_t* buffer, uint32_t uint32) {
+	uchar_t bytes = sizeof(uint32_t);
+	memcpy(buffer, (uchar_t*)&uint32, bytes);
+}
+
+uint16_t formatDNSAnswer(struct DNSAnswerRecordFormatOptions options) {
 	uint16_t recordLength = 0;
+	char Type[sizeof(uint16_t)] = { 0x00, 0x01 };
+	char Class[sizeof(uint16_t)] = { 0x00, 0x01 };
+	char TTL[sizeof(uint32_t)] = { '\0' }; uint32ToChars(TTL,uint32tono32(7200));
+	char RDLENGTH[sizeof(uint16_t)] = {'\0'}; uint16ToChars(RDLENGTH,uint16tono16(4));
+	char addressBuffer[sizeof(uint32_t)] = { '\0' };
+	uint32_t uint32Address = libnet_name2addr4(options.libnet.context, options.ip, LIBNET_DONT_RESOLVE);
+	uint32ToChars(addressBuffer, uint32Address);
 	recordLength = makeDomain(options.buffer, options.qname);
-	memcpy(options.buffer, &Type, sizeof Type);
+	memcpy(options.buffer + recordLength, &Type, sizeof Type);
 	recordLength += sizeof Type;
-	memcpy(options.buffer, &Class, sizeof Class);
+	memcpy(options.buffer + recordLength, &Class, sizeof Class);
 	recordLength += sizeof Class;
-	memcpy(options.buffer, &address, sizeof address);
-	recordLength += sizeof address;
+	memcpy(options.buffer + recordLength, &TTL, sizeof TTL);
+	recordLength += sizeof TTL;
+	memcpy(options.buffer + recordLength, &RDLENGTH, sizeof RDLENGTH);
+	recordLength += sizeof RDLENGTH;
+	memcpy(options.buffer + recordLength, addressBuffer, sizeof addressBuffer);
+	recordLength += sizeof addressBuffer;
+
+	for (int i = 0; i < recordLength; i++) {
+		printf("0x%02X ", options.buffer[i]);
+	}
+	printf("\n");
 
 	return recordLength;
-}
-
-void partOne(int argc, char* argv[]) {
-
-}
-
-void baitResolver(char* sourceIP, char* destinationIP, char* qname) {
-	struct DNSQnameRequestOptions DNSQnameRequestOptions = { sourceIP, destinationIP, qname };
-	struct DNSQnameRequest QNameQuery = makeDNSQnameQuery(DNSQnameRequestOptions);
-	libnet_write(QNameQuery.base.libnet.context);
-	destroyLibnetContext(QNameQuery.base.libnet);
-}
-
-char uint8toOctateChar(uint8_t uint8) {
-	return (char)(uint8 & 0xFF);
-}
-char uint32toOctateChar(uint32_t uint32) {
-	return (char)(uint32 & 0xFF);
-}
-
-
-int main(int argc, char* argv[]) {
-
-	short part = parseOptions(argc, argv);
-	baitResolver(NULL, "192.168.10.10", NULL);
-	return 0;
 }
 
 libnet_ptag_t makeDNSHeader(struct DNSHeaderOptions options) {
@@ -289,7 +332,10 @@ uint16_t formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOpti
 }
 
 struct DNSQuestionRecord makeDNSQuestionRecord(struct DNSQuestionRecordOptions options) {
-	char questionBuffer[RECORD_BUFFER_SIZE] = {'\0'};
+	char questionBuffer[RECORD_BUFFER_SIZE] = { '\0' };
+	char answerBuffer[RECORD_BUFFER_SIZE] = { '\0' };
+	struct DNSAnswerRecordFormatOptions answerFormatOptions = { options.libnet, answerBuffer, "192.168.10.20", options.formatOptions.qname };
+	uint16_t answerLength = formatDNSAnswer(answerFormatOptions);
 	uint16_t questionSize = formatDNSQuestion(questionBuffer, options.formatOptions);
 	libnet_ptag_t libnet_ptag = libnet_build_data(
 		(uint8_t*)questionBuffer,
@@ -311,7 +357,7 @@ libnet_ptag_t makeUDPHeader(struct UDPHeaderOptions options) {
 	libnet_ptag_t libnet_ptag = libnet_build_udp(
 		options.sourcePort,
 		options.destinationPort,
-		LIBNET_UDP_H + LIBNET_UDP_DNSV4_H + options.payloadSize,
+		LIBNET_UDP_H + LIBNET_UDP_DNSV4_H + options.resourceLength,
 		CHECKSUM,
 		NULL_PAYLOAD,
 		NULL_PAYLOAD_SIZE,
@@ -334,7 +380,7 @@ libnet_ptag_t makeIPHeader(struct IPv4HeaderOptions options) {
 	libnet_ptag_t PTAG = 0;
 
 	libnet_ptag_t libnet_ptag = libnet_build_ipv4(
-		LIBNET_IPV4_H + LIBNET_UDP_H + LIBNET_UDP_DNSV4_H + options.payloadSize,
+		LIBNET_IPV4_H + LIBNET_UDP_H + LIBNET_UDP_DNSV4_H + options.resourceLength,
 		TYPE_OF_SERVICE,
 		ID,
 		FRAGMENTATION,
