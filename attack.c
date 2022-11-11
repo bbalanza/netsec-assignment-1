@@ -33,9 +33,7 @@ struct DNSHeaderOptions {
 };
 
 struct DNSQuestionFormatOptions {
-	char* subdomain;
-	char* domain;
-	char* root;
+	char* qname;
 };
 
 struct DNSQuestionRecordOptions {
@@ -83,14 +81,22 @@ struct DNSQnameRequestOptions {
 
 struct DNSAnswerRecord {
 	uint16_t recordSize;
-	libnet_ptag_t ptag;		
+	libnet_ptag_t ptag;
+};
+
+struct DNSAnswerRecordOptions {
+	char* buffer;
+	char* qname;
 };
 
 void 						destroyLibnetContext(struct Libnet libnet);
 void 						parseArguments(int part, int argc, char* argv[]);
-char 						uint32toOctate(uint32_t size);
+char 						uint32toOctateChar(uint32_t uint32);
+char 						uint8toOctateChar(uint8_t uint8);
+uint16_t 						makeDomain(char* buffer, char* domainString);
 short 						parseOptions(int argc, char* argv[]);
 uint16_t 					formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options);
+uint16_t					makeDomain(char* buffer, char* domainString);
 uint32_t 					makeByteNumberedIP(struct Libnet libnet, char* name, int resolve);
 struct Libnet 				makeLibnet();
 libnet_ptag_t 				makeIPHeader(struct Libnet libnet, struct IPv4HeaderOptions options);
@@ -99,27 +105,67 @@ libnet_ptag_t 				makeDNSHeader(struct Libnet libnet, struct DNSHeaderOptions op
 struct DNSRequestHeaders	makeDNSRequestHeaders(struct DNSRequestHeadersOptions options);
 struct DNSQnameRequest 		makeDNSQnameQuery(struct DNSQnameRequestOptions options);
 struct DNSQuestionRecord 	makeDNSQuestionRecord(struct Libnet libnet, struct DNSQuestionRecordOptions options);
+struct DNSAnswerRecord 		makeDNSAnswerRecord(struct DNSAnswerRecordOptions options);
+
+
+uint16_t makeDomain(char* buffer, char* domainString) {
+	char* iter = domainString, * labelStart = domainString;
+	char* bufferIter = buffer;
+	uint32_t labelLength, domainLength = 0;
+	while (1) {
+		if (*iter == '.' || *iter == '\0') {
+			char labelLengthAsChar = uint32toOctateChar(labelLength);
+			memcpy(bufferIter, &labelLengthAsChar, sizeof(labelLengthAsChar));
+			bufferIter += sizeof(labelLengthAsChar);
+
+			memcpy(bufferIter, labelStart, labelLength);
+			bufferIter += labelLength;
+			labelStart = iter + sizeof((char)'.');
+
+			domainLength += labelLength + sizeof labelLengthAsChar;
+			labelLength = 0;
+			if (*iter == '\0') {
+				char nullChar = 0x00;
+				memcpy(bufferIter, &nullChar, sizeof((char)'\0'));
+				domainLength += sizeof((char)'\0');
+				break;
+			}
+		}
+		else {
+			labelLength += 1;
+		}
+		iter += 1;
+	}
+	return domainLength;
+}
+
+struct DNSAnswerRecord makeDNSAnswerRecord(struct DNSAnswerRecordOptions options) {
+	
+}
 
 void partOne(int argc, char* argv[]) {
 
 }
 
-uint32_t baitResolver(libnet_t* libnet, char* name, char* ip) {
-
+void baitResolver(char* sourceIP, char* destinationIP, char* qname) {
+	struct DNSQnameRequestOptions DNSQnameRequestOptions = { sourceIP, destinationIP, qname };
+	struct DNSQnameRequest QNameQuery = makeDNSQnameQuery(DNSQnameRequestOptions);
+	libnet_write(QNameQuery.base.libnet.context);
+	destroyLibnetContext(QNameQuery.base.libnet);
 }
 
-char uint32toOctate(u_int32_t size) {
-	return (char)(size & 0xFF);
+char uint8toOctateChar(uint8_t uint8) {
+	return (char)(uint8 & 0xFF);
+}
+char uint32toOctateChar(uint32_t uint32) {
+	return (char)(uint32 & 0xFF);
 }
 
 
 int main(int argc, char* argv[]) {
 
 	short part = parseOptions(argc, argv);
-	struct DNSQnameRequestOptions DNSQnameRequestOptions = { NULL,"192.168.10.10", NULL };
-	struct DNSQnameRequest QNameQuery = makeDNSQnameQuery(DNSQnameRequestOptions);
-	libnet_write(QNameQuery.base.libnet.context);
-	destroyLibnetContext(QNameQuery.base.libnet);
+	baitResolver(NULL, "192.168.10.10", NULL);
 	return 0;
 }
 
@@ -130,8 +176,7 @@ libnet_ptag_t makeDNSHeader(struct Libnet libnet, struct DNSHeaderOptions option
 	u_int16_t NUMBER_AUTHORITY_RR = 0;
 	u_int16_t NUMBER_ADDITIONAL_RR = 0;
 	libnet_ptag_t PTAG = 0;
-
-	libnet_ptag_t libnet_ptag = libnet_build_dnsv4(
+	PTAG = libnet_build_dnsv4(
 		LIBNET_UDP_DNSV4_H,
 		options.queryID,
 		FLAGS,
@@ -144,11 +189,11 @@ libnet_ptag_t makeDNSHeader(struct Libnet libnet, struct DNSHeaderOptions option
 		libnet.context,
 		PTAG
 	);
-	if (libnet_ptag == -1) {
+	if (PTAG == -1) {
 		fprintf(stderr, "Error: Could not create DNS header. \nLibnet Error: %s", libnet_geterror(libnet.context));
 		exit(EXIT_FAILURE);
 	}
-	return libnet_ptag;
+	return PTAG;
 }
 
 struct DNSRequestHeaders makeDNSRequestHeaders(struct DNSRequestHeadersOptions options) {
@@ -182,11 +227,9 @@ struct DNSQnameRequest makeDNSQnameQuery(struct DNSQnameRequestOptions options) 
 	char DNSQuestionBuffer[PAYLOAD_BUFFER_SIZE];
 	// This is hardcoded for now, but will change
 	uint16_t sourcePort = 53, destinationPort = 53, queryID = 0x1000; /* Passed as argument.*/
-	char* subdomain = "vunet";
-	char* domain = "vu";
-	char* root = "nl";
+	char * qname = "vunet.vu.nl";
 
-	struct DNSQuestionFormatOptions DNSQuestionFormatOptions = { subdomain, domain, root };
+	struct DNSQuestionFormatOptions DNSQuestionFormatOptions = { qname };
 	struct DNSQuestionRecordOptions DNSQuestionRecordOptions = { DNSQuestionBuffer, DNSQuestionFormatOptions };
 	query.DNSQuestionRecord = makeDNSQuestionRecord(query.base.libnet, DNSQuestionRecordOptions);
 
@@ -213,20 +256,17 @@ uint32_t makeByteNumberedIP(struct Libnet libnet, char* name, int resolve) {
 }
 
 uint16_t formatDNSQuestion(char* DNSQuestionBuffer, struct DNSQuestionFormatOptions options) {
-	uint16_t payloadSize = snprintf(DNSQuestionBuffer, sizeof(char) * PAYLOAD_BUFFER_SIZE, "%c%s%c%s%c%s%c%c%c%c%c",
-		uint32toOctate(strlen(options.subdomain)),
-		options.subdomain,
-		uint32toOctate(strlen(options.domain)),
-		options.domain,
-		uint32toOctate(strlen(options.root)),
-		options.root,
-		0x00,
-		0x00, // QType
-		0x01,
-		0x00, // QClass
-		0x01
-	);
-	return payloadSize;
+	
+	uint16_t questionSize = makeDomain(DNSQuestionBuffer, options.qname);
+	char QType[2] = {0x00, 0x01};
+	char QClass[2] = {0x00, 0x01};
+
+	memcpy(DNSQuestionBuffer + questionSize, &QType, sizeof QType);
+	questionSize += sizeof QType;
+	memcpy(DNSQuestionBuffer + questionSize, &QClass, sizeof QClass);
+	questionSize += sizeof QClass;
+	return questionSize;
+
 }
 
 struct DNSQuestionRecord makeDNSQuestionRecord(struct Libnet libnet, struct DNSQuestionRecordOptions questionRecordOptions) {
