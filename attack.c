@@ -38,8 +38,8 @@ struct DNSHeaderOptions {
 
 struct DNSQuestionFormatOptions {
 	char* qname;
-	char* qtype;
-	char* qclass;
+	uint16_t qtype;
+	uint16_t qclass;
 };
 
 struct DNSQuestionRecordOptions {
@@ -81,7 +81,7 @@ struct DNSQueryRequest {
 
 struct DNSQueryRequestOptions {
 	char* sourceIP;
-	char* destination;
+	char* destinationIP;
 	char* qname;
 	uint16_t sourcePort;
 	uint16_t destinationPort;
@@ -141,7 +141,7 @@ void partOne(int argc, char* argv[]) {
 void baitResolver(char* qname, char* sourceIP, char* destinationIP, uint16_t queryID, uint16_t sourcePort, uint16_t destinationPort) {
 	struct DNSQueryRequestOptions queryOptions;
 	queryOptions.sourceIP = sourceIP;
-	queryOptions.destinationPort = destinationIP;
+	queryOptions.destinationIP = destinationIP;
 	queryOptions.qname = qname;
 	queryOptions.queryID = queryID;
 	queryOptions.sourcePort = sourcePort;
@@ -270,7 +270,7 @@ struct DNSQueryRequest makeDNSQueryRequest(struct DNSQueryRequestOptions options
 		sourceIP = makeByteNumberedIP(query.base.libnet, options.sourceIP, LIBNET_DONT_RESOLVE);
 	}
 
-	destinationIP = makeByteNumberedIP(query.base.libnet, options.destination, LIBNET_DONT_RESOLVE);
+	destinationIP = makeByteNumberedIP(query.base.libnet, options.destinationIP, LIBNET_DONT_RESOLVE);
 
 
 	struct DNSQuestionFormatOptions DNSQuestionFormatOptions = { options.qname, qtype, qclass };
