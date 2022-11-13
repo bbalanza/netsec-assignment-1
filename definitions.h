@@ -88,10 +88,11 @@ struct DNSQuestionFormatOptions {
 struct DNSQuestionRecordOptions {
 	struct Libnet libnet;
 	struct DNSQuestionFormatOptions formatOptions;
+	libnet_ptag_t ptag;
 };
 
 struct QuestionRecord {
-	libnet_ptag_t libnet_ptag;
+	libnet_ptag_t ptag;
 	uint16_t questionSize;
 };
 
@@ -128,18 +129,6 @@ struct DNSAnswerRecord {
 	libnet_ptag_t ptag;
 };
 
-struct DNSQueryRequest {
-	struct QuestionRecord questionRecord;
-	struct BaseRequest base;
-};
-
-struct DNSAnswerRequest {
-	struct BaseRequest base;
-	struct DNSAnswerRecord answerRecord;
-	struct QuestionRecord questionRecord;
-	struct DNSHeaderOptions dnsHeaderOptions;
-};
-
 struct DNSAnswerRecordOptions {
 	struct Libnet libnet;
 	libnet_ptag_t ptag;
@@ -150,7 +139,20 @@ struct DNSAnswerRecordOptions {
 	uint16_t rdlength;
 	char* rdata;
 };
+struct DNSQueryRequest {
+	struct QuestionRecord questionRecord;
+	struct BaseRequest base;
+	struct DNSQuestionRecordOptions questionRecordOptions;
+};
 
+struct DNSAnswerRequest {
+	struct BaseRequest base;
+	struct DNSAnswerRecord answerRecord;
+	struct QuestionRecord questionRecord;
+	struct DNSHeaderOptions dnsHeaderOptions;
+	struct DNSAnswerRecordOptions answerRecordOptions;
+	struct DNSQuestionRecordOptions questionRecordOptions;
+};
 struct DNSAnswerRecordFormatOptions {
 	struct Libnet libnet;
 	uchar_t* buffer;
