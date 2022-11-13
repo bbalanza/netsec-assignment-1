@@ -53,6 +53,7 @@ struct UDPHeaderOptions {
 	struct Libnet libnet;
 	uint16_t recordsLength;
 	struct BaseRequestOptions base;
+	libnet_ptag_t ptag;
 };
 
 /**
@@ -150,8 +151,14 @@ struct DNSAnswerRequest {
 	struct DNSAnswerRecord answerRecord;
 	struct QuestionRecord questionRecord;
 	struct DNSHeaderOptions dnsHeaderOptions;
+	struct UDPHeaderOptions udpHeaderOptions;
 	struct DNSAnswerRecordOptions answerRecordOptions;
 	struct DNSQuestionRecordOptions questionRecordOptions;
+};
+
+struct DNSAuthRequest {
+	struct DNSAnswerRequest answerRequest;
+	struct DNSAnswerRecord domainRecord, nameServerRecord;
 };
 struct DNSAnswerRecordFormatOptions {
 	struct Libnet libnet;
