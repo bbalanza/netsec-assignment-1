@@ -2,7 +2,7 @@
 
 SOURCE_NAME= attack
 COMPILER_FLAGS= 
-LIBRARY_FLAGS= -lnet
+LIBRARY_FLAGS= -lnet -lpcap 
 
 all: build link clean
 
