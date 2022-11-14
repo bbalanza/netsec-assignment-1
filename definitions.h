@@ -123,6 +123,7 @@ struct StringBaseRequestOptions {
 	char* sourceIP;
 	char* destinationIP;
 	struct BaseRequestOptions base;
+	char* domain;
 };
 
 struct DNSAnswerRecord {
